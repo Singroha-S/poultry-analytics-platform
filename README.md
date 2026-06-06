@@ -112,7 +112,7 @@ Business Insights
 
 ### Overview Dashboard
 
-![Overview](assets/dashboard-overview.png)
+![Overview](assets/overview.png)
 
 ### Production Trends
 
@@ -120,7 +120,7 @@ Business Insights
 
 ### Shed Analysis
 
-![Shed Analysis](assets/shed-analysis.png)
+![Shed Analysis](assets/shed-wise-production.png)
 
 ---
 
