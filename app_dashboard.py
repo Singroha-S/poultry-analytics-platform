@@ -1,3 +1,4 @@
+import base64
 import streamlit as st
 import pandas as pd
 import plotly.graph_objects as go
@@ -6,24 +7,34 @@ from pathlib import Path
 
 # Page configuration
 st.set_page_config(
-    page_title="Farm Dashboard",
+    page_title="Poultry Analytics Platform",
     page_icon="🐔",
     layout="wide",
     initial_sidebar_state="expanded"
 )
 
+# Load background image from assets and embed it for the CSS background
+def get_background_image():
+    asset_path = Path("assets") / "1082693566740391857.jpeg"
+    if asset_path.exists():
+        encoded = base64.b64encode(asset_path.read_bytes()).decode()
+        return f"data:image/jpeg;base64,{encoded}"
+    return None
+
+background_url = get_background_image() or "https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?auto=format&fit=crop&w=1400&q=80"
+
 # Make background white and increase readability for non-technical users
 st.markdown(
-    """
+    f"""
     <style>
-    html, body, .stApp {
-        background-image: url("https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?auto=format&fit=crop&w=1400&q=80");
+    html, body, .stApp {{
+        background-image: url("{background_url}");
         background-size: cover;
         background-position: center center;
         background-attachment: fixed;
         background-repeat: no-repeat;
         color: #111111 !important;
-    }
+    }}
     .stApp, .main, .block-container {
         background-color: rgba(255,255,255,0.86) !important;
         box-shadow: 0 20px 60px rgba(0,0,0,0.08);
@@ -159,25 +170,38 @@ selected_sheds = st.sidebar.multiselect(
 
 # Date limiting controls
 st.sidebar.markdown("---")
-st.sidebar.subheader("Date Limit")
+st.sidebar.subheader("Show data through")
 date_limit_mode = st.sidebar.radio(
-    "Limit data to:",
-    options=["None (show all)", "Cap to combined max", "Cap to sheet max", "Custom date"],
+    "Where should the data stop?",
+    options=[
+        "Show everything",
+        "Stop at the latest report date",
+        "Stop at one sheet's final date",
+        "Choose a finish date",
+    ],
     index=1,
 )
 
 combined_max = df["Date"].max().date()
 selected_cap_date = None
-if date_limit_mode == "Cap to combined max":
+if date_limit_mode == "Stop at the latest report date":
     selected_cap_date = combined_max
-elif date_limit_mode == "Cap to sheet max":
-    sheet_choice = st.sidebar.selectbox("Select sheet to cap to", options=sorted(sheet_max_dates.keys()))
+elif date_limit_mode == "Stop at one sheet's final date":
+    sheet_choice = st.sidebar.selectbox(
+        "Pick sheet to use for the end date",
+        options=sorted(sheet_max_dates.keys()),
+    )
     selected_cap_date = sheet_max_dates.get(sheet_choice).date() if sheet_choice else None
-elif date_limit_mode == "Custom date":
-    selected_cap_date = st.sidebar.date_input("Cap date (inclusive)", value=combined_max, min_value=df["Date"].min().date(), max_value=combined_max)
+elif date_limit_mode == "Choose a finish date":
+    selected_cap_date = st.sidebar.date_input(
+        "Choose the last date to include",
+        value=combined_max,
+        min_value=df["Date"].min().date(),
+        max_value=combined_max,
+    )
 
 if selected_cap_date:
-    st.sidebar.write(f"Capping data to: {selected_cap_date}")
+    st.sidebar.write(f"Including data up to: {selected_cap_date}")
 
 
 # Filter data
@@ -192,7 +216,7 @@ if selected_cap_date:
     filtered_df = filtered_df[filtered_df["Date"].dt.date <= selected_cap_date]
 
 # Main title
-st.title("🐔 Layer Farm Dashboard")
+st.title("🐔 Poultry Analytics Platform")
 st.markdown(f"**Data Range:** {date_range[0]} to {date_range[1]} | **Sheds:** {', '.join(selected_sheds)}")
 
 # Friendly quick instructions for non-technical users
@@ -538,4 +562,15 @@ with tab5:
 
 # Footer
 st.divider()
+st.markdown(
+    """
+    ### About
+    **Owner:** Late Ch VED Singh Singroha  
+    **Address:** Bahiron Khera, Jind, Haryana - 126114  
+
+    **Contact Us:**  
+    📱 WhatsApp: +91 9992373885  
+    ✉️ Email: [naveensingroha92@gmail.com](mailto:naveensingroha92@gmail.com)
+    """
+)
 st.caption(f"Data updated: {df['Date'].max().date()} | Total Records: {len(filtered_df)}")
