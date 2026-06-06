@@ -24,46 +24,44 @@ def get_background_image():
 background_url = get_background_image() or "https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?auto=format&fit=crop&w=1400&q=80"
 
 # Make background white and increase readability for non-technical users
-st.markdown(
-    f"""
+css = f"""
     <style>
     html, body, .stApp {{
-        background-image: url("{background_url}");
+        background-image: url('{background_url}');
         background-size: cover;
         background-position: center center;
         background-attachment: fixed;
         background-repeat: no-repeat;
         color: #111111 !important;
     }}
-    .stApp, .main, .block-container {
+    .stApp, .main, .block-container {{
         background-color: rgba(255,255,255,0.86) !important;
         box-shadow: 0 20px 60px rgba(0,0,0,0.08);
-    }
-    [data-testid="stSidebar"], .css-1lcbmhc.e1fqkh3o2 {
+    }}
+    [data-testid="stSidebar"], .css-1lcbmhc.e1fqkh3o2 {{
         background-color: rgba(255,255,255,0.95) !important;
         color: #111111 !important;
-    }
-    header, .css-1avcm0n, .css-1rs6os, [data-testid="stToolbar"] {
+    }}
+    header, .css-1avcm0n, .css-1rs6os, [data-testid="stToolbar"] {{
         background-color: rgba(255,255,255,0.95) !important;
         color: #111111 !important;
-    }
-    header * { color: #111111 !important; }
-    .stExpanderHeader, .streamlit-expanderHeader, button[aria-expanded], .stButton>button, .stDownloadButton>button {
+    }}
+    header * {{ color: #111111 !important; }}
+    .stExpanderHeader, .streamlit-expanderHeader, button[aria-expanded], .stButton>button, .stDownloadButton>button {{
         color: #111111 !important;
         background-color: #f8fafc !important;
         border-color: #d1d5db !important;
-    }
-    .stApp, .stApp * { color: #111111 !important; }
-    .css-1d391kg {padding: 1rem;} /* layout padding tweak */
-    .big-instruction {font-size:18px; color:#111111}
-    .stMetricValue, .stMetricLabel, .stMetricDelta { color: #111111 !important; }
-    .stButton>button, .stDownloadButton>button { color: #111111 !important; background-color: #eef2ff !important; }
-    a { color: #0a66c2 !important; }
-    .metric-large .stMetricValue {font-size:28px}
+    }}
+    .stApp, .stApp * {{ color: #111111 !important; }}
+    .css-1d391kg {{padding: 1rem;}} /* layout padding tweak */
+    .big-instruction {{font-size:18px; color:#111111}}
+    .stMetricValue, .stMetricLabel, .stMetricDelta {{ color: #111111 !important; }}
+    .stButton>button, .stDownloadButton>button {{ color: #111111 !important; background-color: #eef2ff !important; }}
+    a {{ color: #0a66c2 !important; }}
+    .metric-large .stMetricValue {{font-size:28px}}
     </style>
-    """,
-    unsafe_allow_html=True,
-)
+    """
+st.markdown(css, unsafe_allow_html=True)
 
 # Load data
 @st.cache_data
