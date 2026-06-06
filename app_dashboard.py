@@ -35,8 +35,9 @@ css = f"""
         color: #111111 !important;
     }}
     .stApp, .main, .block-container {{
-        background-color: rgba(255,255,255,0.86) !important;
+        background-color: rgba(255,255,255,0.78) !important;
         box-shadow: 0 20px 60px rgba(0,0,0,0.08);
+        border: 1px solid rgba(255,255,255,0.9);
     }}
     [data-testid="stSidebar"], .css-1lcbmhc.e1fqkh3o2 {{
         background-color: rgba(255,255,255,0.95) !important;
