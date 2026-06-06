@@ -12,6 +12,48 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
+# Make background white and increase readability for non-technical users
+st.markdown(
+    """
+    <style>
+    html, body, .stApp {
+        background-image: url("https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?auto=format&fit=crop&w=1400&q=80");
+        background-size: cover;
+        background-position: center center;
+        background-attachment: fixed;
+        background-repeat: no-repeat;
+        color: #111111 !important;
+    }
+    .stApp, .main, .block-container {
+        background-color: rgba(255,255,255,0.86) !important;
+        box-shadow: 0 20px 60px rgba(0,0,0,0.08);
+    }
+    [data-testid="stSidebar"], .css-1lcbmhc.e1fqkh3o2 {
+        background-color: rgba(255,255,255,0.95) !important;
+        color: #111111 !important;
+    }
+    header, .css-1avcm0n, .css-1rs6os, [data-testid="stToolbar"] {
+        background-color: rgba(255,255,255,0.95) !important;
+        color: #111111 !important;
+    }
+    header * { color: #111111 !important; }
+    .stExpanderHeader, .streamlit-expanderHeader, button[aria-expanded], .stButton>button, .stDownloadButton>button {
+        color: #111111 !important;
+        background-color: #f8fafc !important;
+        border-color: #d1d5db !important;
+    }
+    .stApp, .stApp * { color: #111111 !important; }
+    .css-1d391kg {padding: 1rem;} /* layout padding tweak */
+    .big-instruction {font-size:18px; color:#111111}
+    .stMetricValue, .stMetricLabel, .stMetricDelta { color: #111111 !important; }
+    .stButton>button, .stDownloadButton>button { color: #111111 !important; background-color: #eef2ff !important; }
+    a { color: #0a66c2 !important; }
+    .metric-large .stMetricValue {font-size:28px}
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
+
 # Load data
 @st.cache_data
 def load_data():
@@ -34,6 +76,7 @@ def load_data():
         "Bird_Balance",
         "Mortality",
     ]
+    
 
     for col in numeric_cols:
         if col in df.columns:
@@ -74,12 +117,36 @@ def get_sheet_max_dates():
 
 sheet_max_dates = get_sheet_max_dates()
 
-# Sidebar filters
-st.sidebar.title("🔧 Filters")
+# Sidebar filters (friendly for non-technical users)
+st.sidebar.title("Filters — simple steps")
+st.sidebar.markdown("""
+- Pick a time range using the quick buttons below.
+- Choose which sheds to view (or leave as All).
+- Charts update automatically.
+""")
+
+# Simple presets for non-technical users
+preset = st.sidebar.radio(
+    "Quick range",
+    options=["Last 7 days", "Last 30 days", "All data", "Custom"],
+    index=1,
+)
+
+today_date = df["Date"].max().date()
+if preset == "Last 7 days":
+    default_start = today_date - pd.Timedelta(days=6)
+elif preset == "Last 30 days":
+    default_start = today_date - pd.Timedelta(days=29)
+elif preset == "All data":
+    default_start = df["Date"].min().date()
+else:
+    default_start = df["Date"].min().date()
+
+default_end = today_date
 
 date_range = st.sidebar.date_input(
     "Date Range",
-    value=(df["Date"].min().date(), df["Date"].max().date()),
+    value=(default_start, default_end),
     min_value=df["Date"].min().date(),
     max_value=df["Date"].max().date()
 )
@@ -127,6 +194,24 @@ if selected_cap_date:
 # Main title
 st.title("🐔 Layer Farm Dashboard")
 st.markdown(f"**Data Range:** {date_range[0]} to {date_range[1]} | **Sheds:** {', '.join(selected_sheds)}")
+
+# Friendly quick instructions for non-technical users
+st.markdown(
+        """
+        <div class="big-instruction">
+        <strong>How to use (3 quick steps):</strong>
+        <ol>
+            <li>Pick a time range on the left (Last 7 days is a good start).</li>
+            <li>Select one or more sheds (or leave as All).</li>
+            <li>Look at the big numbers at top and the charts below — no clicks needed.</li>
+        </ol>
+        </div>
+        """,
+        unsafe_allow_html=True,
+)
+
+with st.expander("Need a quick explanation? (click)"):
+        st.write("This dashboard shows eggs, bird count, mortality and production percentage. Use simple buttons on the left to change the time range.")
 
 # Key metrics row
 latest_date = filtered_df["Date"].max()

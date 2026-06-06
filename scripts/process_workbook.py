@@ -56,7 +56,8 @@ for sheet_name in sheets_to_process:
         # date rows
         if date_cells:
 
-            report_date = pd.to_datetime(date_cells[0])
+            # Parse date with dayfirst=True to correctly interpret dates like 05/06/2026 as 5 June 2026
+            report_date = pd.to_datetime(date_cells[0], dayfirst=True)
 
             shed_names = (
                 df.iloc[row + 1, 1:5]
