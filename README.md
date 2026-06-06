@@ -110,13 +110,13 @@ Business Insights
 
 ## Dashboard Preview
 
-### Overview Dashboard
+### Overview
 
 ![Overview](assets/overview.png)
 
 ### Production Trends
 
-![Production Trends](assets/production-trend.png)
+![Production Trends](assets/production-trends.png)
 
 ### Shed Analysis
 
