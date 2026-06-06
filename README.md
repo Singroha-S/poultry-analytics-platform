@@ -126,7 +126,7 @@ Business Insights
 
 ## Live Demo
 
-https://vsfanalytics.streamlit.app/
+https://layer-analytics.streamlit.app/
 
 ---
 
