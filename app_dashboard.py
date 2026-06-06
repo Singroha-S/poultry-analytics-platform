@@ -15,7 +15,7 @@ st.set_page_config(
 
 # Load background image from assets and embed it for the CSS background
 def get_background_image():
-    asset_path = Path("assets") / "1082693566740391857.jpeg"
+    asset_path = Path("assets") / "bg1.jpeg"
     if asset_path.exists():
         encoded = base64.b64encode(asset_path.read_bytes()).decode()
         return f"data:image/jpeg;base64,{encoded}"
