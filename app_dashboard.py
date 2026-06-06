@@ -20,7 +20,8 @@ def load_data():
         st.error("Data file not found. Run `process_workbook.py` first.")
         st.stop()
     df = pd.read_csv(output_file)
-    df["Date"] = pd.to_datetime(df["Date"])
+    # Parse dates with dayfirst=True to match spreadsheets that use D/M/Y
+    df["Date"] = pd.to_datetime(df["Date"], dayfirst=True)
 
     # Clean and coerce numeric columns that may contain stray text (e.g. "20 p", "%", commas)
     numeric_cols = [
@@ -48,6 +49,31 @@ def load_data():
 
 df = load_data()
 
+# Helper: get per-sheet max dates from the source workbook
+@st.cache_data
+def get_sheet_max_dates():
+    src = Path("data/Daily Report.xlsx")
+    if not src.exists():
+        return {}
+    xls = pd.ExcelFile(src)
+    exclude = {"Bird Weight","TRAY WEIGHT","Sale","Final","Sheet20","Sheet21","Sheet13","Sheet18","Sheet17","Sheet16","Sheet15"}
+    sheets = [s for s in xls.sheet_names if s not in exclude and s.strip()]
+    sheet_max = {}
+    import datetime
+    for s in sheets:
+        df_s = pd.read_excel(src, sheet_name=s, header=None)
+        dates = []
+        for r in range(len(df_s)):
+            row_values = df_s.iloc[r,:5].tolist()
+            for v in row_values:
+                if isinstance(v, (pd.Timestamp, datetime.datetime, datetime.date)):
+                    dates.append(pd.to_datetime(v, dayfirst=True))
+        if dates:
+            sheet_max[s] = max(dates)
+    return sheet_max
+
+sheet_max_dates = get_sheet_max_dates()
+
 # Sidebar filters
 st.sidebar.title("🔧 Filters")
 
@@ -64,12 +90,39 @@ selected_sheds = st.sidebar.multiselect(
     default=sorted(df["Shed"].unique())
 )
 
+# Date limiting controls
+st.sidebar.markdown("---")
+st.sidebar.subheader("Date Limit")
+date_limit_mode = st.sidebar.radio(
+    "Limit data to:",
+    options=["None (show all)", "Cap to combined max", "Cap to sheet max", "Custom date"],
+    index=1,
+)
+
+combined_max = df["Date"].max().date()
+selected_cap_date = None
+if date_limit_mode == "Cap to combined max":
+    selected_cap_date = combined_max
+elif date_limit_mode == "Cap to sheet max":
+    sheet_choice = st.sidebar.selectbox("Select sheet to cap to", options=sorted(sheet_max_dates.keys()))
+    selected_cap_date = sheet_max_dates.get(sheet_choice).date() if sheet_choice else None
+elif date_limit_mode == "Custom date":
+    selected_cap_date = st.sidebar.date_input("Cap date (inclusive)", value=combined_max, min_value=df["Date"].min().date(), max_value=combined_max)
+
+if selected_cap_date:
+    st.sidebar.write(f"Capping data to: {selected_cap_date}")
+
+
 # Filter data
 filtered_df = df[
     (df["Date"].dt.date >= date_range[0]) &
     (df["Date"].dt.date <= date_range[1]) &
     (df["Shed"].isin(selected_sheds))
 ]
+
+# Apply cap from date limiter if set
+if selected_cap_date:
+    filtered_df = filtered_df[filtered_df["Date"].dt.date <= selected_cap_date]
 
 # Main title
 st.title("🐔 Layer Farm Dashboard")
