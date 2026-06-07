@@ -1,10 +1,28 @@
 import base64
 import streamlit as st
 import pandas as pd
+import re
+from urllib.parse import urlparse
+from typing import Optional
 import plotly.graph_objects as go
 import plotly.express as px
 from pathlib import Path
 import random
+import os
+import io
+# Google service-account auth
+try:
+    from google.oauth2 import service_account
+    from google.auth.transport.requests import AuthorizedSession
+except Exception:
+    service_account = None
+    AuthorizedSession = None
+
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    pass
 
 # Page configuration
 st.set_page_config(
@@ -129,16 +147,91 @@ css = f"""
     """
 st.markdown(css, unsafe_allow_html=True)
 
-# Load data
+# Google Sheets helpers
+def _parse_sheet_id(url_or_id: str):
+    # Accept either a full URL or just the sheet id
+    if not url_or_id:
+        return None
+    m = re.search(r"/d/([a-zA-Z0-9-_]+)", url_or_id)
+    if m:
+        return m.group(1)
+    # fallback: if appears like an id
+    if re.fullmatch(r"[a-zA-Z0-9-_]+", url_or_id.strip()):
+        return url_or_id.strip()
+    return None
+
+def _build_csv_url(sheet_id: str, gid: Optional[str] = None):
+    if gid:
+        return f"https://docs.google.com/spreadsheets/d/{sheet_id}/export?format=csv&gid={gid}"
+    # try generic CSV export (first sheet)
+    return f"https://docs.google.com/spreadsheets/d/{sheet_id}/gviz/tq?tqx=out:csv"
+
+
+def _download_gsheet_excel(sheet_id: str):
+    sa_file = os.environ.get("SERVICE_ACCOUNT_FILE")
+    if not sa_file or not os.path.exists(sa_file):
+        raise FileNotFoundError("SERVICE_ACCOUNT_FILE not set or file missing.")
+
+    scopes = [
+        "https://www.googleapis.com/auth/drive.readonly",
+        "https://www.googleapis.com/auth/spreadsheets.readonly",
+    ]
+    creds = service_account.Credentials.from_service_account_file(sa_file, scopes=scopes)
+    authed = AuthorizedSession(creds)
+    xlsx_url = f"https://docs.google.com/spreadsheets/d/{sheet_id}/export?format=xlsx"
+    resp = authed.get(xlsx_url)
+    resp.raise_for_status()
+    return pd.ExcelFile(io.BytesIO(resp.content))
+
+
+# Load data (supports fallback to local output CSV)
 @st.cache_data
-def load_data():
-    output_file = Path("output/all_reports_combined.csv")
-    if not output_file.exists():
-        st.error("Data file not found. Run `process_workbook.py` first.")
-        st.stop()
-    df = pd.read_csv(output_file)
-    # Parse dates with dayfirst=True to match spreadsheets that use D/M/Y
-    df["Date"] = pd.to_datetime(df["Date"], dayfirst=True)
+def load_data(gsheet_url: Optional[str] = None, gsheet_gid: Optional[str] = None, sa_file: Optional[str] = None):
+    # If the user has provided a Google Sheet URL/ID, try that first
+    sheet_id = _parse_sheet_id(gsheet_url) if gsheet_url else None
+    if sheet_id:
+        # Attempt to read using service account (recommended).
+        # allow overriding via argument so cache key includes credential path
+        if not sa_file:
+            sa_file = os.environ.get("SERVICE_ACCOUNT_FILE")
+        if not sa_file or not os.path.exists(sa_file):
+            st.warning("SERVICE_ACCOUNT_FILE not set or file missing — cannot read private Google Sheet. Falling back to local file.")
+            sheet_id = None
+        else:
+            try:
+                scopes = ["https://www.googleapis.com/auth/drive.readonly", "https://www.googleapis.com/auth/spreadsheets.readonly"]
+                creds = service_account.Credentials.from_service_account_file(sa_file, scopes=scopes)
+                authed = AuthorizedSession(creds)
+                # Try CSV export first if gid provided, else export the first sheet as xlsx and read it
+                if gsheet_gid:
+                    csv_url = _build_csv_url(sheet_id, gsheet_gid)
+                    resp = authed.get(csv_url)
+                    resp.raise_for_status()
+                    df = pd.read_csv(io.StringIO(resp.text))
+                else:
+                    # download xlsx and read first sheet
+                    xlsx_url = f"https://docs.google.com/spreadsheets/d/{sheet_id}/export?format=xlsx"
+                    resp = authed.get(xlsx_url)
+                    resp.raise_for_status()
+                    xls = pd.ExcelFile(io.BytesIO(resp.content))
+                    df = pd.read_excel(xls, sheet_name=0)
+                if "Date" in df.columns:
+                    df["Date"] = pd.to_datetime(df["Date"], dayfirst=True)
+                else:
+                    st.warning("Google Sheet loaded but no 'Date' column found — falling back to local file format.")
+                    sheet_id = None
+            except Exception as e:
+                st.warning(f"Error reading Google Sheet with service account — falling back to local file. ({e})")
+                sheet_id = None
+
+    if not sheet_id:
+        output_file = Path("output/all_reports_combined.csv")
+        if not output_file.exists():
+            st.error("Data file not found. Run `process_workbook.py` first or provide the Google Sheet URL in the sidebar.")
+            st.stop()
+        df = pd.read_csv(output_file)
+        # Parse dates with dayfirst=True to match spreadsheets that use D/M/Y
+        df["Date"] = pd.to_datetime(df["Date"], dayfirst=True)
 
     # Clean and coerce numeric columns that may contain stray text (e.g. "20 p", "%", commas)
     numeric_cols = [
@@ -150,8 +243,9 @@ def load_data():
         "Age",
         "Bird_Balance",
         "Mortality",
+        "Bird_Weight",
+        "Tray_Weight",
     ]
-    
 
     for col in numeric_cols:
         if col in df.columns:
@@ -163,13 +257,64 @@ def load_data():
             )
             df[col] = pd.to_numeric(df[col], errors="coerce")
 
+    # Normalize Shed column to remove garbage values and standardize names like "Shed 1"
+    if "Shed" in df.columns:
+        s = df["Shed"].astype(str).str.strip()
+        shed_match = s.str.extract(r'(Shed\s*\d+)', expand=False)
+        shed_num = s.str.extract(r'^\s*(\d+)\s*$', expand=False)
+        s_clean = shed_match.fillna(shed_num.apply(lambda x: 'Shed ' + x if pd.notna(x) else None))
+        
+        # Strictly normalize to "Shed X" format and only keep Sheds 1-4
+        df["Shed"] = s_clean.str.replace(r'\s+', ' ', regex=True).str.title()
+        
+        # Only keep the core production sheds (Shed 1 to 4) and remove garbage/summary rows
+        df = df[df["Shed"].isin(["Shed 1", "Shed 2", "Shed 3", "Shed 4"])].copy()
+        
+        # drop rows without a recognized shed label
+        df = df[df["Shed"].notna()].copy()
+
     return df.sort_values("Date")
 
-df = load_data()
+st.sidebar.markdown("---")
+gsheet_url = os.environ.get("GSHEET_ID", "") or os.environ.get("GSHEET_URL", "")
+gsheet_gid = os.environ.get("GSHEET_GID", "")
+sa_file = os.environ.get("SERVICE_ACCOUNT_FILE", None)
+
+df = load_data(gsheet_url if gsheet_url else None, gsheet_gid if gsheet_gid else None, sa_file)
 
 # Helper: get per-sheet max dates from the source workbook
 @st.cache_data
-def get_sheet_max_dates():
+def get_sheet_max_dates(gsheet_url: Optional[str] = None, gsheet_gid: Optional[str] = None, sa_file: Optional[str] = None):
+    # If a Google Sheet is provided, return its max Date under a single key.
+    sheet_id = _parse_sheet_id(gsheet_url) if gsheet_url else None
+    if sheet_id:
+        # allow overriding sa_file via argument so cache considers credentials
+        if not sa_file:
+            sa_file = os.environ.get("SERVICE_ACCOUNT_FILE")
+
+        if sa_file and os.path.exists(sa_file):
+            try:
+                xls = _download_gsheet_excel(sheet_id)
+                df_main = pd.read_excel(xls, sheet_name=0)
+                if "Date" in df_main.columns:
+                    df_main["Date"] = pd.to_datetime(df_main["Date"], dayfirst=True)
+                    return {"GoogleSheet": df_main["Date"].max()}
+            except Exception:
+                pass
+
+        # If the sheet is public and gid is provided, fall back to direct CSV export
+        if gsheet_gid:
+            try:
+                csv_url = _build_csv_url(sheet_id, gsheet_gid)
+                df_main = pd.read_csv(csv_url)
+                if "Date" in df_main.columns:
+                    df_main["Date"] = pd.to_datetime(df_main["Date"], dayfirst=True)
+                    return {"GoogleSheet": df_main["Date"].max()}
+            except Exception:
+                pass
+
+        return {}
+
     src = Path("data/Daily Report.xlsx")
     if not src.exists():
         return {}
@@ -190,16 +335,10 @@ def get_sheet_max_dates():
             sheet_max[s] = max(dates)
     return sheet_max
 
-sheet_max_dates = get_sheet_max_dates()
+sheet_max_dates = get_sheet_max_dates(gsheet_url if gsheet_url else None, gsheet_gid if gsheet_gid else None, sa_file)
 
 # Sidebar filters (friendly for non-technical users)
 st.sidebar.title("Filters — simple steps")
-st.sidebar.markdown("""
-- Pick a time range using the quick buttons below.
-- Choose which sheds to view (or leave as All).
-- Charts update automatically.
-""")
-
 # Simple presets for non-technical users
 preset = st.sidebar.radio(
     "Quick range",
@@ -228,10 +367,17 @@ date_range = st.sidebar.date_input(
     max_value=df["Date"].max().date()
 )
 
+sheds = sorted(df["Shed"].dropna().unique())
 selected_sheds = st.sidebar.multiselect(
     "Select Sheds",
-    options=sorted(df["Shed"].unique()),
-    default=sorted(df["Shed"].unique())
+    options=sheds,
+    default=sheds
+)
+
+# Weight aggregation controls: bird/tray sheets are weekly in the source
+aggregate_weights_weekly = st.sidebar.checkbox(
+    "Aggregate weight data by week (use for Bird/Tray sheets)",
+    value=True,
 )
 
 # Date limiting controls
@@ -324,41 +470,60 @@ today_data = filtered_df[filtered_df["Date"] == latest_date]
 
 col1, col2, col3, col4, col5 = st.columns(5)
 
+# Show selected date range prominently for non-technical users
+try:
+    sel_range_text = f"{date_range[0].strftime('%Y-%m-%d')} to {date_range[1].strftime('%Y-%m-%d')}"
+except Exception:
+    sel_range_text = f"{date_range[0]} to {date_range[1]}"
+st.info(f"Selected Range: {sel_range_text}")
+
 with col1:
-    st.metric(
-        "Total Birds",
-        f"{int(today_data['Bird_Balance'].sum()):,}",
-        delta=None
-    )
+    total_birds = 0
+    if "Bird_Balance" in today_data.columns and today_data["Bird_Balance"].notna().any():
+        try:
+            total_birds = int(today_data["Bird_Balance"].sum())
+        except Exception:
+            total_birds = int(today_data["Bird_Balance"].sum(skipna=True) or 0)
+    st.metric("Total Birds", f"{total_birds:,}", delta=None)
 
 with col2:
-    st.metric(
-        "Fresh Eggs",
-        f"{int(today_data['Fresh_Eggs'].sum()):,}",
-        delta=None
-    )
+    fresh_eggs = int(today_data['Fresh_Eggs'].sum()) if 'Fresh_Eggs' in today_data.columns and today_data['Fresh_Eggs'].notna().any() else 0
+    st.metric("Fresh Eggs", f"{fresh_eggs:,}", delta=None)
 
 with col3:
-    st.metric(
-        "Mortality",
-        f"{int(today_data['Mortality'].sum())}",
-        delta=None
-    )
+    mortality = int(today_data['Mortality'].sum()) if 'Mortality' in today_data.columns and today_data['Mortality'].notna().any() else 0
+    st.metric("Mortality", f"{mortality}", delta=None)
 
 with col4:
-    st.metric(
-        "Avg Production %",
-        f"{today_data['Production_Pct'].mean():.2f}%",
-        delta=None
-    )
+    prod_pct = None
+    if 'Production_Pct' in today_data.columns and today_data['Production_Pct'].notna().any():
+        prod_pct = today_data['Production_Pct'].mean()
+    st.metric("Avg Production %", f"{prod_pct:.2f}%" if prod_pct is not None else "N/A", delta=None)
 
 with col5:
-    st.metric(
-        "Total Fresh Trays",
-        f"{int(today_data['Fresh_Tray'].sum())}",
-        delta=None
-    )
+    fresh_trays = int(today_data['Fresh_Tray'].sum()) if 'Fresh_Tray' in today_data.columns and today_data['Fresh_Tray'].notna().any() else 0
+    st.metric("Total Fresh Trays", f"{fresh_trays:,}", delta=None)
+if "Bird_Weight" in df.columns or "Tray_Weight" in df.columns:
+    bird_avg = None
+    tray_avg = None
+    if "Bird_Weight" in today_data.columns and today_data["Bird_Weight"].notna().any():
+        bird_avg = today_data["Bird_Weight"].mean()
+    if "Tray_Weight" in today_data.columns and today_data["Tray_Weight"].notna().any():
+        tray_avg = today_data["Tray_Weight"].mean()
 
+    col1, col2 = st.columns(2)
+    with col1:
+        st.metric(
+            "Avg Bird Weight",
+            f"{bird_avg:.1f} g" if bird_avg is not None else "N/A",
+            delta=None
+        )
+    with col2:
+        st.metric(
+            "Avg Tray Weight",
+            f"{tray_avg:.1f} g" if tray_avg is not None else "N/A",
+            delta=None
+        )
 st.divider()
 
 # Tabs for different views
@@ -427,6 +592,54 @@ with tab1:
         )
         fig_mort.update_yaxes(title_text="Mortality Count")
         st.plotly_chart(fig_mort, use_container_width=True)
+
+    if "Bird_Weight" in filtered_df.columns or "Tray_Weight" in filtered_df.columns:
+        col1, col2 = st.columns(2)
+        with col1:
+            if "Bird_Weight" in filtered_df.columns:
+                st.subheader("Avg Bird Weight")
+                if aggregate_weights_weekly:
+                    bw = filtered_df.copy()
+                    bw["_week_start"] = bw["Date"].dt.to_period("W").apply(lambda p: p.start_time)
+                    bird_weight = bw.groupby("_week_start")["Bird_Weight"].mean().reset_index()
+                    bird_weight = bird_weight.rename(columns={"_week_start": "Date"})
+                else:
+                    bird_weight = filtered_df.groupby("Date")["Bird_Weight"].mean().reset_index()
+
+                fig_bird_weight = px.line(
+                    bird_weight,
+                    x="Date",
+                    y="Bird_Weight",
+                    markers=True,
+                    title="Average Bird Weight Over Time"
+                )
+                fig_bird_weight.update_yaxes(title_text="Bird Weight (g)")
+                st.plotly_chart(fig_bird_weight, use_container_width=True)
+            else:
+                st.info("No Bird Weight data available.")
+
+        with col2:
+            if "Tray_Weight" in filtered_df.columns:
+                st.subheader("Avg Tray Weight")
+                if aggregate_weights_weekly:
+                    tw = filtered_df.copy()
+                    tw["_week_start"] = tw["Date"].dt.to_period("W").apply(lambda p: p.start_time)
+                    tray_weight = tw.groupby("_week_start")["Tray_Weight"].mean().reset_index()
+                    tray_weight = tray_weight.rename(columns={"_week_start": "Date"})
+                else:
+                    tray_weight = filtered_df.groupby("Date")["Tray_Weight"].mean().reset_index()
+
+                fig_tray_weight = px.line(
+                    tray_weight,
+                    x="Date",
+                    y="Tray_Weight",
+                    markers=True,
+                    title="Average Tray Weight Over Time"
+                )
+                fig_tray_weight.update_yaxes(title_text="Tray Weight (g)")
+                st.plotly_chart(fig_tray_weight, use_container_width=True)
+            else:
+                st.info("No Tray Weight data available.")
 
 # Tab 2: Trends Analysis
 with tab2:
