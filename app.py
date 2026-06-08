@@ -238,8 +238,8 @@ def _extract_records_from_raw_df(df: pd.DataFrame):
 
         for v in row_values:
             v_str = str(v).strip()
-            # Flexible regex for DD-MM-YYYY, DD/MM/YYYY, or YYYY-MM-DD
-            if re.search(r"\b\d{1,4}[-/]\d{1,2}[-/]\d{1,4}\b", v_str):
+            # Flexible regex for DD-MM-YYYY, DD/MM/YYYY, YYYY-MM-DD, or dots
+            if re.search(r"\b\d{1,4}[-./]\d{1,2}[-./]\d{1,4}\b", v_str):
                 # By parsing the raw string with dayfirst=True, we fix the May/Dec swap
                 d = pd.to_datetime(v_str, dayfirst=True, errors='coerce')
                 if pd.notna(d):
@@ -282,8 +282,8 @@ def _extract_records_from_raw_df(df: pd.DataFrame):
                                 "Production_Pct": metrics.get("production %", [None]*10)[i],
                                 "Fresh_Tray": metrics.get("fresh tray", [None]*10)[i],
                             })
-                    # JUMP forward to avoid parsing numbers inside this block as dates
-                    row += 18
+                    # JUMP forward slightly to avoid parsing numbers inside this block as dates
+                    row += 12
                     continue
         row += 1
     return pd.DataFrame(records)
@@ -312,7 +312,7 @@ def load_data(gsheet_url: Optional[str] = None, gsheet_gid: Optional[str] = None
         xls = _download_gsheet_excel(sheet_id)
         all_dfs = []
         for sheet_name in xls.sheet_names:
-            if sheet_name.lower() in {"birdweight", "trayweight", "sale", "final"} or "sheet" in sheet_name.lower():
+            if sheet_name.lower() in {"birdweight", "trayweight", "sale", "final"}:
                 continue
             # Force dtype=str to prevent the Excel engine from incorrectly swapping day/month
             df_s = pd.read_excel(xls, sheet_name=sheet_name, header=None, dtype=str)
@@ -334,8 +334,7 @@ def load_data(gsheet_url: Optional[str] = None, gsheet_gid: Optional[str] = None
             st.error("Google Sheet loaded successfully but no 'Date' column was found.")
             st.stop()
     except Exception as e:
-        st.error(f"Error reading Google Sheet with service account: {e}")
-        st.info("💡 **Checklist to resolve:**\n1. Share the Google Sheet with the Service Account email found in your JSON key.\n2. Ensure Google Sheets & Drive APIs are enabled in GCP Console.\n3. Verify the Sheet ID is correct.")
+        st.error(f"Error reading Google Sheet: {e}")
         st.stop()
 
     # Clean and coerce numeric columns that may contain stray text (e.g. "20 p", "%", commas)
@@ -418,6 +417,12 @@ sheet_max_dates = get_sheet_max_dates(gsheet_url if gsheet_url else None, gsheet
 st.sidebar.image("assets/vsf_logo.png", use_container_width=True)
 
 # Sidebar filters (friendly for non-technical users)
+# Manual refresh button for non-technical users
+if st.sidebar.button("🔄 Refresh Data", use_container_width=True, help="Fetch the latest data from Google Sheets immediately"):
+    st.cache_data.clear()
+    st.sidebar.success("Fetching fresh data...")
+    st.rerun()
+
 st.sidebar.markdown('<p class="sidebar-header">📅 1. Choose Time Frame</p>', unsafe_allow_html=True)
 
 # Simple presets for non-technical users

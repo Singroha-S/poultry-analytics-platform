@@ -175,8 +175,8 @@ def main():
             report_date = None
             for v in row_values:
                 v_str = str(v).strip()
-                # Flexible regex for DD-MM-YYYY, DD/MM/YYYY, or YYYY-MM-DD
-                if re.search(r"\b\d{1,4}[-/]\d{1,2}[-/]\d{1,4}\b", v_str):
+                # Flexible regex for DD-MM-YYYY, DD/MM/YYYY, YYYY-MM-DD, or dots
+                if re.search(r"\b\d{1,4}[-./]\d{1,2}[-./]\d{1,4}\b", v_str):
                     d = pd.to_datetime(v_str, dayfirst=True, errors="coerce")
                     if pd.notna(d):
                         report_date = d
@@ -219,8 +219,8 @@ def main():
                                 "Production_Pct": metrics.get("Production %", [None]*10)[i],
                                 "Fresh_Tray": metrics.get("Fresh Tray", [None]*10)[i],
                             })
-                    # Jump to avoid noise
-                    row += 18
+                    # Jump slightly to avoid noise
+                    row += 12
                     continue
 
             row += 1
