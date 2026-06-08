@@ -3,6 +3,7 @@ __pycache__/
 *.pyc
 data/
 output/
+.env
 # Ignore service account JSON keys
 service_account.json
 service-account.json

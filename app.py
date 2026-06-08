@@ -10,6 +10,16 @@ from pathlib import Path
 import random
 import os
 import io
+import datetime
+import numpy as np
+
+# Handle large background images and suppress decompression bomb warnings
+try:
+    from PIL import Image
+    Image.MAX_IMAGE_PIXELS = 150000000  # Threshold higher than bg1.jpeg
+except ImportError:
+    pass
+
 # Google service-account auth
 try:
     from google.oauth2 import service_account
@@ -20,9 +30,14 @@ except Exception:
 
 try:
     from dotenv import load_dotenv
-    load_dotenv()
+    # Use an absolute path to find the .env file in the project root
+    env_path = Path(__file__).resolve().parent / ".env"
+    if env_path.exists():
+        load_dotenv(dotenv_path=env_path)
+    else:
+        st.sidebar.warning("⚠️ .env file not found in project root.")
 except ImportError:
-    pass
+    st.sidebar.warning("⚠️ 'python-dotenv' package not installed. .env file will be ignored.")
 
 # Page configuration
 st.set_page_config(
@@ -32,14 +47,12 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Add logo
-st.logo("assets/vsf_logo.png")
-
 # Hide Streamlit chrome for professional appearance (keep sidebar toggle visible)
 hide_st_style = """
     <style>
     #MainMenu {visibility: hidden;}
     footer {visibility: hidden;}
+    header {visibility: hidden;}
     [data-testid="stSidebarNav"] {display: block !important;}
     </style>
     """
@@ -70,6 +83,12 @@ css = f"""
         background-color: rgba(255,255,255,0.78) !important;
         box-shadow: 0 20px 60px rgba(0,0,0,0.08);
         border: 1px solid rgba(255,255,255,0.9);
+        padding-top: 1.5rem !important;
+    }}
+    /* Move the sidebar content (logo) to the very top corner */
+    [data-testid="stSidebar"] [data-testid="stVerticalBlock"] {{
+        padding-top: 0rem !important;
+        gap: 0rem !important;
     }}
     [data-testid="stSidebar"], .css-1lcbmhc.e1fqkh3o2 {{
         background-color: rgba(255,255,255,0.95) !important;
@@ -88,15 +107,18 @@ css = f"""
     .stApp, .stApp * {{ color: #111111 !important; }}
     .css-1d391kg {{padding: 1rem;}} /* layout padding tweak */
     .big-instruction {{font-size:18px; color:#111111}}
+    
+    /* Sidebar Styling */
+    [data-testid="stSidebar"] {{
+        border-right: 1px solid rgba(0,0,0,0.05);
+    }}
+    .sidebar-header {{
+        font-size: 20px; font-weight: 700; color: #064e3b; margin-top: 1rem;
+    }}
     .stMetricValue, .stMetricLabel, .stMetricDelta {{ color: #111111 !important; }}
     .stButton>button, .stDownloadButton>button {{ color: #111111 !important; background-color: #eef2ff !important; }}
     a {{ color: #0a66c2 !important; }}
     .metric-large .stMetricValue {{font-size:28px}}
-    /* Logo enlargement */
-    [data-testid="stLogo"] img {{
-        height: 140px !important;
-        width: auto !important;
-    }}
     /* Animated quote header */
     @keyframes scrollLeft {{
         0% {{ transform: translateX(100%); opacity: 0; }}
@@ -109,7 +131,7 @@ css = f"""
         overflow: hidden;
         display: block;
         box-sizing: border-box;
-        padding: 6px 0 12px 0;
+        padding: 0px 0 5px 0;
     }}
     .scrolling-quote {{
         display: inline-block;
@@ -117,8 +139,13 @@ css = f"""
         white-space: nowrap;
         font-weight: 600;
         color: #2d5016;
-        padding: 8px 20px;
+        padding: 4px 20px;
         font-size: clamp(20px, 4.5vw, 48px);
+    }}
+    /* Title Spacing: Adjusted to be lower than the scrolling line */
+    h1 {{
+        margin-top: 15px !important;
+        padding-top: 0px !important;
     }}
     /* Tabs: make them more prominent and easier to find */
     div[role="tablist"] > button[role="tab"] {{
@@ -183,60 +210,123 @@ def _download_gsheet_excel(sheet_id: str):
     resp.raise_for_status()
     return pd.ExcelFile(io.BytesIO(resp.content))
 
+def _extract_records_from_raw_df(df: pd.DataFrame):
+    """Parses a raw report-style DataFrame into a clean list of records."""
+    records = []
+    row = 0
+    while row < len(df):
+        # Look for a date pattern in the first few columns
+        row_values = df.iloc[row, :15].tolist()
+        report_date = None
+
+        for v in row_values:
+            v_str = str(v).strip()
+            # Flexible regex for DD-MM-YYYY, DD/MM/YYYY, or YYYY-MM-DD
+            if re.search(r"\b\d{1,4}[-/]\d{1,2}[-/]\d{1,4}\b", v_str):
+                # By parsing the raw string with dayfirst=True, we fix the May/Dec swap
+                d = pd.to_datetime(v_str, dayfirst=True, errors='coerce')
+                if pd.notna(d):
+                    report_date = d
+                    break
+
+        if report_date:
+            # Look ahead: the row immediately following the date MUST contain "Shed"
+            # to be considered a valid production block.
+            header_row_idx = row + 1
+            if header_row_idx < len(df):
+                header_row_vals = " ".join(df.iloc[header_row_idx, :10].astype(str).tolist()).lower()
+                if "shed" in header_row_vals:
+                    # Shed names are in the next row
+                    max_col = min(10, df.shape[1])
+                    shed_names = df.iloc[header_row_idx, 1:max_col].tolist()
+                    metrics = {}
+                    # Extract metrics for the next 18 rows - normalize names to lowercase
+                    for r in range(row + 2, min(row + 20, len(df))):
+                        metric_name = str(df.iloc[r, 0]).strip().lower()
+                        metric_values = df.iloc[r, 1:max_col].tolist()
+                        metrics[metric_name] = metric_values
+                    
+                    for i, shed in enumerate(shed_names):
+                        s_str = str(shed).strip().lower()
+                        # Strictly match Sheds 1-4 only
+                        m = re.search(r'shed\s*([1-4])', s_str)
+                        if m:
+                            valid_name = f"Shed {m.group(1)}"
+                            records.append({
+                                "Date": report_date,
+                                "Shed": valid_name,
+                                "Age": metrics.get("age", [None]*10)[i],
+                                "Mortality": metrics.get("mortality", [None]*10)[i],
+                                "Bird_Balance": metrics.get("bird balance", [None]*10)[i],
+                                "Fresh_Eggs": metrics.get("fresh eggs", [None]*10)[i],
+                                "Crack_Eggs": metrics.get("crack eggs", [None]*10)[i],
+                                "Leaker_Eggs": metrics.get("leaker eggs", [None]*10)[i],
+                                "Jumbo_Tray": metrics.get("jumbo tray", [None]*10)[i],
+                                "Production_Pct": metrics.get("production %", [None]*10)[i],
+                                "Fresh_Tray": metrics.get("fresh tray", [None]*10)[i],
+                            })
+                    # JUMP forward to avoid parsing numbers inside this block as dates
+                    row += 18
+                    continue
+        row += 1
+    return pd.DataFrame(records)
 
 # Load data (supports fallback to local output CSV)
 @st.cache_data
 def load_data(gsheet_url: Optional[str] = None, gsheet_gid: Optional[str] = None, sa_file: Optional[str] = None):
     # If the user has provided a Google Sheet URL/ID, try that first
     sheet_id = _parse_sheet_id(gsheet_url) if gsheet_url else None
-    if sheet_id:
-        # Attempt to read using service account (recommended).
-        # allow overriding via argument so cache key includes credential path
-        if not sa_file:
-            sa_file = os.environ.get("SERVICE_ACCOUNT_FILE")
-        if not sa_file or not os.path.exists(sa_file):
-            st.warning("SERVICE_ACCOUNT_FILE not set or file missing — cannot read private Google Sheet. Falling back to local file.")
-            sheet_id = None
-        else:
-            try:
-                scopes = ["https://www.googleapis.com/auth/drive.readonly", "https://www.googleapis.com/auth/spreadsheets.readonly"]
-                creds = service_account.Credentials.from_service_account_file(sa_file, scopes=scopes)
-                authed = AuthorizedSession(creds)
-                # Try CSV export first if gid provided, else export the first sheet as xlsx and read it
-                if gsheet_gid:
-                    csv_url = _build_csv_url(sheet_id, gsheet_gid)
-                    resp = authed.get(csv_url)
-                    resp.raise_for_status()
-                    df = pd.read_csv(io.StringIO(resp.text))
-                else:
-                    # download xlsx and read first sheet
-                    xlsx_url = f"https://docs.google.com/spreadsheets/d/{sheet_id}/export?format=xlsx"
-                    resp = authed.get(xlsx_url)
-                    resp.raise_for_status()
-                    xls = pd.ExcelFile(io.BytesIO(resp.content))
-                    df = pd.read_excel(xls, sheet_name=0)
-                if "Date" in df.columns:
-                    df["Date"] = pd.to_datetime(df["Date"], dayfirst=True)
-                else:
-                    st.warning("Google Sheet loaded but no 'Date' column found — falling back to local file format.")
-                    sheet_id = None
-            except Exception as e:
-                st.warning(f"Error reading Google Sheet with service account — falling back to local file. ({e})")
-                sheet_id = None
-
     if not sheet_id:
-        output_file = Path("output/all_reports_combined.csv")
-        if not output_file.exists():
-            st.error("Data file not found. Run `process_workbook.py` first or provide the Google Sheet URL in the sidebar.")
+        st.error("Missing Google Sheet ID or URL. Please set `GSHEET_URL` or `GSHEET_ID` in your environment or .env file.")
+        st.stop()
+
+    if not sa_file:
+        sa_file = os.environ.get("SERVICE_ACCOUNT_FILE")
+
+    if not sa_file or not os.path.exists(sa_file):
+        st.error(f"Service account file not found: '{sa_file}'")
+        st.info("💡 **To resolve:** Ensure your Google Cloud JSON key path is correctly set in the `SERVICE_ACCOUNT_FILE` environment variable.")
+        st.stop()
+
+    try:
+        scopes = ["https://www.googleapis.com/auth/drive.readonly", "https://www.googleapis.com/auth/spreadsheets.readonly"]
+        creds = service_account.Credentials.from_service_account_file(sa_file, scopes=scopes)
+        authed = AuthorizedSession(creds)
+
+        xls = _download_gsheet_excel(sheet_id)
+        all_dfs = []
+        for sheet_name in xls.sheet_names:
+            if sheet_name.lower() in {"birdweight", "trayweight", "sale", "final"} or "sheet" in sheet_name.lower():
+                continue
+            # Force dtype=str to prevent the Excel engine from incorrectly swapping day/month
+            df_s = pd.read_excel(xls, sheet_name=sheet_name, header=None, dtype=str)
+            extracted = _extract_records_from_raw_df(df_s)
+            if not extracted.empty:
+                all_dfs.append(extracted)
+        
+        df = pd.concat(all_dfs, ignore_index=True) if all_dfs else pd.DataFrame()
+
+        # Deduplicate: If the same date/shed combo exists in multiple sheets, keep the last one found
+        if not df.empty and "Date" in df.columns and "Shed" in df.columns:
+            df = df.drop_duplicates(subset=["Date", "Shed"], keep="last")
+
+        if not df.empty and "Date" in df.columns:
+            # Force conversion to datetime to ensure correct sorting and max() operations
+            df["Date"] = pd.to_datetime(df["Date"], dayfirst=True, errors='coerce')
+            df = df.dropna(subset=["Date"])
+        else:
+            st.error("Google Sheet loaded successfully but no 'Date' column was found.")
             st.stop()
-        df = pd.read_csv(output_file)
-        # Parse dates with dayfirst=True to match spreadsheets that use D/M/Y
-        df["Date"] = pd.to_datetime(df["Date"], dayfirst=True)
+    except Exception as e:
+        st.error(f"Error reading Google Sheet with service account: {e}")
+        st.info("💡 **Checklist to resolve:**\n1. Share the Google Sheet with the Service Account email found in your JSON key.\n2. Ensure Google Sheets & Drive APIs are enabled in GCP Console.\n3. Verify the Sheet ID is correct.")
+        st.stop()
 
     # Clean and coerce numeric columns that may contain stray text (e.g. "20 p", "%", commas)
     numeric_cols = [
         "Fresh_Eggs",
         "Crack_Eggs",
+        "Leaker_Eggs",
         "Jumbo_Tray",
         "Fresh_Tray",
         "Production_Pct",
@@ -249,11 +339,12 @@ def load_data(gsheet_url: Optional[str] = None, gsheet_gid: Optional[str] = None
 
     for col in numeric_cols:
         if col in df.columns:
-            # Convert to string, strip non-numeric characters (except dot and minus), then coerce
+            # Aggressively extract only the first numeric sequence found.
+            # This ensures "8 17 16 9" becomes "8" and prevents large concatenated numbers.
             df[col] = (
                 df[col]
                 .astype(str)
-                .str.replace(r"[^0-9.\-]", "", regex=True)
+                .str.extract(r'(\d+\.?\d*)', expand=False)
             )
             df[col] = pd.to_numeric(df[col], errors="coerce")
 
@@ -283,77 +374,55 @@ sa_file = os.environ.get("SERVICE_ACCOUNT_FILE", None)
 df = load_data(gsheet_url if gsheet_url else None, gsheet_gid if gsheet_gid else None, sa_file)
 
 # Helper: get per-sheet max dates from the source workbook
-@st.cache_data
+@st.cache_data(show_spinner=False)
 def get_sheet_max_dates(gsheet_url: Optional[str] = None, gsheet_gid: Optional[str] = None, sa_file: Optional[str] = None):
     # If a Google Sheet is provided, return its max Date under a single key.
     sheet_id = _parse_sheet_id(gsheet_url) if gsheet_url else None
-    if sheet_id:
-        # allow overriding sa_file via argument so cache considers credentials
-        if not sa_file:
-            sa_file = os.environ.get("SERVICE_ACCOUNT_FILE")
-
-        if sa_file and os.path.exists(sa_file):
-            try:
-                xls = _download_gsheet_excel(sheet_id)
-                df_main = pd.read_excel(xls, sheet_name=0)
-                if "Date" in df_main.columns:
-                    df_main["Date"] = pd.to_datetime(df_main["Date"], dayfirst=True)
-                    return {"GoogleSheet": df_main["Date"].max()}
-            except Exception:
-                pass
-
-        # If the sheet is public and gid is provided, fall back to direct CSV export
-        if gsheet_gid:
-            try:
-                csv_url = _build_csv_url(sheet_id, gsheet_gid)
-                df_main = pd.read_csv(csv_url)
-                if "Date" in df_main.columns:
-                    df_main["Date"] = pd.to_datetime(df_main["Date"], dayfirst=True)
-                    return {"GoogleSheet": df_main["Date"].max()}
-            except Exception:
-                pass
-
+    if not sheet_id:
         return {}
 
-    src = Path("data/Daily Report.xlsx")
-    if not src.exists():
-        return {}
-    xls = pd.ExcelFile(src)
-    exclude = {"Bird Weight","TRAY WEIGHT","Sale","Final","Sheet20","Sheet21","Sheet13","Sheet18","Sheet17","Sheet16","Sheet15"}
-    sheets = [s for s in xls.sheet_names if s not in exclude and s.strip()]
-    sheet_max = {}
-    import datetime
-    for s in sheets:
-        df_s = pd.read_excel(src, sheet_name=s, header=None)
-        dates = []
-        for r in range(len(df_s)):
-            row_values = df_s.iloc[r,:5].tolist()
-            for v in row_values:
-                if isinstance(v, (pd.Timestamp, datetime.datetime, datetime.date)):
-                    dates.append(pd.to_datetime(v, dayfirst=True))
-        if dates:
-            sheet_max[s] = max(dates)
-    return sheet_max
+    if not sa_file:
+        sa_file = os.environ.get("SERVICE_ACCOUNT_FILE")
+
+    if sa_file and os.path.exists(sa_file):
+        try:
+            xls = _download_gsheet_excel(sheet_id)
+            sheet_max = {}
+            for sheet_name in xls.sheet_names:
+                if sheet_name.lower() in {"birdweight", "trayweight", "sale", "final"} or "sheet" in sheet_name.lower():
+                    continue
+                df_s = pd.read_excel(xls, sheet_name=sheet_name, header=None, dtype=str)
+                extracted = _extract_records_from_raw_df(df_s)
+                if not extracted.empty:
+                    sheet_max[sheet_name] = extracted["Date"].max()
+            return sheet_max
+        except Exception:
+            pass
+    return {}
 
 sheet_max_dates = get_sheet_max_dates(gsheet_url if gsheet_url else None, gsheet_gid if gsheet_gid else None, sa_file)
 
+# Add logo to the top of the sidebar for high visibility
+st.sidebar.image("assets/vsf_logo.png", use_container_width=True)
+
 # Sidebar filters (friendly for non-technical users)
-st.sidebar.title("Filters — simple steps")
+st.sidebar.markdown('<p class="sidebar-header">📅 1. Choose Time Frame</p>', unsafe_allow_html=True)
+
 # Simple presets for non-technical users
 preset = st.sidebar.radio(
-    "Quick range",
-    options=["Latest day", "Last 7 days", "Last 30 days", "All data", "Custom"],
-    index=2,
+    "Pick a shortcut:",
+    options=["Today Only", "Last 7 days", "Last 30 days", "Show All History", "Custom Dates"],
+    index=3,
 )
 
 today_date = df["Date"].max().date()
-if preset == "Latest day":
+if preset == "Today Only":
     default_start = today_date
 elif preset == "Last 7 days":
     default_start = today_date - pd.Timedelta(days=6)
 elif preset == "Last 30 days":
     default_start = today_date - pd.Timedelta(days=29)
-elif preset == "All data":
+elif preset == "Show All History":
     default_start = df["Date"].min().date()
 else:
     default_start = df["Date"].min().date()
@@ -382,16 +451,16 @@ aggregate_weights_weekly = st.sidebar.checkbox(
 
 # Date limiting controls
 st.sidebar.markdown("---")
-st.sidebar.subheader("Show data through")
+st.sidebar.subheader("🛡️ Data Accuracy Guard")
 date_limit_mode = st.sidebar.radio(
-    "Where should the data stop?",
+    "Ignore data entries after:",
     options=[
         "Show everything",
         "Stop at the latest report date",
         "Stop at one sheet's final date",
         "Choose a finish date",
     ],
-    index=1,
+    index=0,
 )
 
 combined_max = df["Date"].max().date()
@@ -438,44 +507,31 @@ quotes = [
 import random
 quote = random.choice(quotes)
 st.markdown(f'<div class="scrolling-quote">{quote}</div>', unsafe_allow_html=True)
-st.markdown("---")
 
 # Main title
 st.title("🐔 VSF Farm Analytics")
 latest_date = filtered_df["Date"].max()
-st.caption(f"Last Updated: {latest_date.strftime('%B %d, %Y') if pd.notna(latest_date) else 'N/A'}")
-st.markdown(f"**Data Range:** {date_range[0]} to {date_range[1]} | **Sheds:** {', '.join(selected_sheds)}")
-
-# Friendly quick instructions for non-technical users
 st.markdown(
-        """
-        <div class="big-instruction">
-        <strong>How to use (3 quick steps):</strong>
-        <ol>
-            <li>Pick a time range on the left (Last 7 days is a good start).</li>
-            <li>Select one or more sheds (or leave as All).</li>
-            <li>Look at the big numbers at top and the charts below — no clicks needed.</li>
-        </ol>
-        </div>
-        """,
-        unsafe_allow_html=True,
+    f"🗓️ **Range:** `{date_range[0]}` to `{date_range[1]}` | "
+    f"🏠 **Sheds:** `{', '.join(selected_sheds)}` | "
+    f"✅ **Latest Data:** `{latest_date.strftime('%B %d, %Y') if pd.notna(latest_date) else 'N/A'}`"
 )
 
-with st.expander("Need a quick explanation? (click)"):
-        st.write("This dashboard shows eggs, bird count, mortality and production percentage. Use simple buttons on the left to change the time range.")
+with st.expander("📖 Dashboard Guide: How to read this report"):
+    st.markdown("""
+    **Welcome to your Farm Analytics!** Here is how to get the most out of this view:
+    1. **The Cards Below:** These show the performance for the **most recent day** in your selection.
+    2. **Filtering:** Use the sidebar on the left to change dates or focus on specific sheds.
+    3. **Trends:** Click the **Trends** or **Shed Details** tabs above to see how things have changed over time.
+    4. **Data Guard:** If you see "future" data, check the 'Data Accuracy Guard' in the sidebar.
+    """)
 
 # Key metrics row
 latest_date = filtered_df["Date"].max()
 today_data = filtered_df[filtered_df["Date"] == latest_date]
 
+st.markdown(f"### 🚀 Latest Results: **{latest_date.strftime('%d %B, %Y')}**")
 col1, col2, col3, col4, col5 = st.columns(5)
-
-# Show selected date range prominently for non-technical users
-try:
-    sel_range_text = f"{date_range[0].strftime('%Y-%m-%d')} to {date_range[1].strftime('%Y-%m-%d')}"
-except Exception:
-    sel_range_text = f"{date_range[0]} to {date_range[1]}"
-st.info(f"Selected Range: {sel_range_text}")
 
 with col1:
     total_birds = 0
@@ -648,24 +704,41 @@ with tab2:
     col1, col2 = st.columns(2)
     
     with col1:
-        st.subheader("Fresh Eggs vs Crack Eggs")
-        daily_egg_types = filtered_df.groupby("Date")[["Fresh_Eggs", "Crack_Eggs"]].sum().reset_index()
-        fig_egg_comp = px.area(
-            daily_egg_types,
-            x="Date",
-            y=["Fresh_Eggs", "Crack_Eggs"],
-            title="Fresh vs Crack Eggs"
+        st.subheader("Egg Quality Analysis")
+        daily_egg_types = filtered_df.groupby("Date")[["Fresh_Eggs", "Crack_Eggs", "Leaker_Eggs"]].sum().reset_index()
+        
+        fig_egg_comp = go.Figure()
+        # Primary Axis: Fresh Eggs
+        fig_egg_comp.add_trace(go.Scatter(x=daily_egg_types["Date"], y=daily_egg_types["Fresh_Eggs"], name="Fresh Eggs (Main)", line=dict(color='#10b981', width=3)))
+        # Secondary Axis: Crack and Leaker
+        fig_egg_comp.add_trace(go.Scatter(x=daily_egg_types["Date"], y=daily_egg_types["Crack_Eggs"], name="Crack Eggs (Right Axis)", yaxis="y2", line=dict(color='#f59e0b', dash='dot')))
+        fig_egg_comp.add_trace(go.Scatter(x=daily_egg_types["Date"], y=daily_egg_types["Leaker_Eggs"], name="Leaker Eggs (Right Axis)", yaxis="y2", line=dict(color='#ef4444', dash='dash')))
+        
+        fig_egg_comp.update_layout(
+            title="Fresh vs. Quality Issues",
+            yaxis=dict(title="Total Fresh Eggs", side="left", tickformat=","),
+            yaxis2=dict(title="Crack / Leaker Count", overlaying="y", side="right", showgrid=False, tickformat=","),
+            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+            hovermode="x unified"
         )
         st.plotly_chart(fig_egg_comp, use_container_width=True)
     
     with col2:
         st.subheader("Tray Types Distribution")
         tray_data = filtered_df.groupby("Date")[["Jumbo_Tray", "Fresh_Tray"]].sum().reset_index()
-        fig_trays = px.area(
-            tray_data,
-            x="Date",
-            y=["Jumbo_Tray", "Fresh_Tray"],
-            title="Jumbo vs Fresh Trays"
+        
+        fig_trays = go.Figure()
+        # Primary Axis: Fresh Trays
+        fig_trays.add_trace(go.Bar(x=tray_data["Date"], y=tray_data["Fresh_Tray"], name="Fresh Trays", marker_color='#3b82f6', opacity=0.7))
+        # Secondary Axis: Jumbo Trays
+        fig_trays.add_trace(go.Scatter(x=tray_data["Date"], y=tray_data["Jumbo_Tray"], name="Jumbo Trays (Right Axis)", yaxis="y2", line=dict(color='#8b5cf6', width=3)))
+        
+        fig_trays.update_layout(
+            title="Fresh Trays vs. Jumbo Trays",
+            yaxis=dict(title="Fresh Trays (Bars)", tickformat=","),
+            yaxis2=dict(title="Jumbo Trays (Line)", overlaying="y", side="right", showgrid=False, tickformat=","),
+            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+            hovermode="x unified"
         )
         st.plotly_chart(fig_trays, use_container_width=True)
     
@@ -857,9 +930,30 @@ with tab5:
     
     st.divider()
     
-    st.write("**Summary Statistics**")
-    summary = filtered_df[["Age", "Bird_Balance", "Fresh_Eggs", "Mortality", "Production_Pct"]].describe()
-    st.dataframe(summary, use_container_width=True)
+    st.write("**📈 Farm Performance Benchmarks**")
+    st.write("This table shows the typical performance versus the best and worst days in your selected range.")
+    
+    # Create a user-friendly summary table
+    stats_df = filtered_df.agg({
+        "Age": ["mean", "min", "max"],
+        "Bird_Balance": ["mean", "min", "max"],
+        "Fresh_Eggs": ["mean", "min", "max"],
+        "Mortality": ["mean", "min", "max"],
+        "Production_Pct": ["mean", "min", "max"]
+    }).T
+
+    stats_df.columns = ["Average (Typical)", "Lowest Recorded", "Highest Recorded"]
+    stats_df.index = ["Age (Weeks)", "Bird Population", "Daily Fresh Eggs", "Daily Mortality", "Production %"]
+
+    # Display cleaned up table
+    st.dataframe(
+        stats_df.style.format({
+            "Average (Typical)": "{:,.2f}",
+            "Lowest Recorded": "{:,.0f}",
+            "Highest Recorded": "{:,.0f}"
+        }),
+        use_container_width=True
+    )
 
 # Footer
 st.divider()

@@ -11,9 +11,14 @@ import numpy as np
 
 try:
     from dotenv import load_dotenv
-    load_dotenv()
+    # Use an absolute path to find the .env file in the project root
+    env_path = Path(__file__).resolve().parents[1] / ".env"
+    if env_path.exists():
+        load_dotenv(dotenv_path=env_path)
+    else:
+        print("Warning: .env file not found.")
 except ImportError:
-    pass
+    print("Warning: 'python-dotenv' not installed. Environment variables must be set manually.")
 
 ROOT = Path(__file__).resolve().parents[1]
 FILE = ROOT / "data" / "Daily Report.xlsx"
@@ -39,6 +44,9 @@ def _fetch_workbook_from_gsheets(sheet_id: str) -> pd.ExcelFile:
 
     xlsx_url = f"https://docs.google.com/spreadsheets/d/{sheet_id}/export?format=xlsx"
     resp = authed.get(xlsx_url)
+    if resp.status_code == 403:
+        print("Error 403: Access Denied. Make sure to share the Google Sheet with your service account email.")
+        sys.exit(1)
     resp.raise_for_status()
     return pd.ExcelFile(io.BytesIO(resp.content))
 
@@ -137,13 +145,13 @@ def main():
     # Determine source: Google Sheet ID via env var or CLI arg, otherwise local file
     sheet_id = os.environ.get("GSHEET_ID") or (sys.argv[1] if len(sys.argv) > 1 else None)
 
-    if sheet_id:
-        print(f"Fetching workbook from Google Sheets: {sheet_id}")
-        xls = _fetch_workbook_from_gsheets(sheet_id)
-    else:
-        if not FILE.exists():
-            raise FileNotFoundError(f"Data file not found: {FILE}")
-        xls = pd.ExcelFile(FILE)
+    if not sheet_id:
+        print("Error: GSHEET_ID is not set. This script strictly requires a Google Sheet ID.")
+        print("To resolve: Set the 'GSHEET_ID' environment variable or pass the ID as an argument.")
+        sys.exit(1)
+
+    print(f"Fetching workbook from Google Sheets: {sheet_id}")
+    xls = _fetch_workbook_from_gsheets(sheet_id)
 
     all_sheets = xls.sheet_names
     sheets_to_process = [s for s in all_sheets if s and s.strip()]
@@ -157,74 +165,63 @@ def main():
             print(f"Skipping auxiliary sheet for daily parsing: {sheet_name}")
             continue
         print(f"Processing: {sheet_name}")
-        df = pd.read_excel(xls, sheet_name=sheet_name, header=None)
+        # Force dtype=str to ensure we parse dates strictly from raw text
+        df = pd.read_excel(xls, sheet_name=sheet_name, header=None, dtype=str)
 
         records = []
         row = 0
-
         while row < len(df):
-
             row_values = df.iloc[row, :15].tolist()
-            date_cells = [
-                v for v in row_values
-                if isinstance(v, (pd.Timestamp, datetime.datetime, datetime.date))
-            ]
+            report_date = None
+            for v in row_values:
+                v_str = str(v).strip()
+                # Flexible regex for DD-MM-YYYY, DD/MM/YYYY, or YYYY-MM-DD
+                if re.search(r"\b\d{1,4}[-/]\d{1,2}[-/]\d{1,4}\b", v_str):
+                    d = pd.to_datetime(v_str, dayfirst=True, errors="coerce")
+                    if pd.notna(d):
+                        report_date = d
+                        break
 
-            # Fallback: if no date object is found, try to parse string dates (e.g. "07-06-2026")
-            if not date_cells:
-                for v in row_values:
-                    if isinstance(v, str) and re.search(r"\d{1,2}[-/]\d{1,2}[-/]\d{2,4}", str(v).strip()):
-                        d = pd.to_datetime(v.strip(), dayfirst=True, errors="coerce")
-                        if pd.notna(d):
-                            date_cells.append(d)
-                            break
+            if report_date:
+                # Validate that the next row actually contains Shed headers
+                header_row_idx = row + 1
+                if header_row_idx < len(df):
+                    header_row_vals = " ".join(df.iloc[header_row_idx, :10].astype(str).tolist()).lower()
+                    if "shed" not in header_row_vals:
+                        row += 1
+                        continue
 
-            if date_cells:
-                report_date = pd.to_datetime(date_cells[0], dayfirst=True)
-
-                # Ensure there is a header row following the date row
-                if row + 1 >= len(df):
-                    row += 1
-                    continue
-
-                # Safely slice to available columns for shed names
-                max_col = min(5, df.shape[1])
-                shed_names = df.iloc[row + 1, 1:max_col].tolist()
-
-                metrics = {}
-
-                # Only iterate rows that exist in the sheet to avoid IndexError
-                for r in range(row + 2, min(row + 12, len(df))):
-                    metric_name = str(df.iloc[r, 0]).strip() if 0 in df.columns else str(df.iloc[r, 0]).strip()
-                    # Safely slice available columns for metric values
+                    # Safely slice to available columns for shed names
                     max_col = min(5, df.shape[1])
-                    metric_values = df.iloc[r, 1:max_col].tolist() if max_col > 1 else []
-                    metrics[metric_name] = metric_values
+                    shed_names = df.iloc[header_row_idx, 1:max_col].tolist()
+                    metrics = {}
 
-                for i, shed in enumerate(shed_names):
-                    s_str = str(shed).strip().lower()
-                    valid_shed = None
-                    if "shed" in s_str:
-                        m = re.search(r"(\d+)", s_str)
-                        if m and m.group(1) in ["1", "2", "3", "4"]:
+                    for r in range(row + 2, min(row + 20, len(df))):
+                        metric_name = str(df.iloc[r, 0]).strip()
+                        metric_values = df.iloc[r, 1:max_col].tolist() if max_col > 1 else []
+                        metrics[metric_name] = metric_values
+
+                    for i, shed in enumerate(shed_names):
+                        s_str = str(shed).strip().lower()
+                        m = re.search(r"shed\s*([1-4])", s_str)
+                        if m:
                             valid_shed = f"Shed {m.group(1)}"
-                    elif s_str in ["1", "2", "3", "4"]:
-                        valid_shed = f"Shed {s_str}"
-
-                    if valid_shed:
-                        records.append({
-                            "Date": report_date,
-                            "Shed": valid_shed,
-                            "Age": metrics.get("Age", [None]*10)[i],
-                            "Mortality": metrics.get("Mortality", [None]*10)[i],
-                            "Bird_Balance": metrics.get("Bird Balance", [None]*10)[i],
-                            "Fresh_Eggs": metrics.get("Fresh Eggs", [None]*10)[i],
-                            "Crack_Eggs": metrics.get("Crack Eggs", [None]*10)[i],
-                            "Leaker_Eggs": metrics.get("Leaker Eggs", [None]*10)[i],
-                            "Jumbo_Tray": metrics.get("Jumbo Tray", [None]*10)[i],
-                            "Production_Pct": metrics.get("Production %", [None]*10)[i],
-                            "Fresh_Tray": metrics.get("Fresh Tray", [None]*10)[i],
-                        })
+                            records.append({
+                                "Date": report_date,
+                                "Shed": valid_shed,
+                                "Age": metrics.get("Age", [None]*10)[i],
+                                "Mortality": metrics.get("Mortality", [None]*10)[i],
+                                "Bird_Balance": metrics.get("Bird Balance", [None]*10)[i],
+                                "Fresh_Eggs": metrics.get("Fresh Eggs", [None]*10)[i],
+                                "Crack_Eggs": metrics.get("Crack Eggs", [None]*10)[i],
+                                "Leaker_Eggs": metrics.get("Leaker Eggs", [None]*10)[i],
+                                "Jumbo_Tray": metrics.get("Jumbo Tray", [None]*10)[i],
+                                "Production_Pct": metrics.get("Production %", [None]*10)[i],
+                                "Fresh_Tray": metrics.get("Fresh Tray", [None]*10)[i],
+                            })
+                    # Jump to avoid noise
+                    row += 18
+                    continue
 
             row += 1
 
@@ -232,6 +229,25 @@ def main():
         print(f"  → Extracted {len(records)} records\n")
 
     combined_df = pd.DataFrame(all_records)
+
+    # Clean numeric data: Extract only the first number to prevent concatenation errors (e.g. 8 17 16 9 -> 8)
+    numeric_cols = [
+        "Fresh_Eggs", "Crack_Eggs", "Leaker_Eggs", "Jumbo_Tray", 
+        "Fresh_Tray", "Production_Pct", "Age", "Bird_Balance", "Mortality"
+    ]
+    for col in numeric_cols:
+        if col in combined_df.columns:
+            combined_df[col] = (
+                combined_df[col]
+                .astype(str)
+                .str.extract(r'(\d+\.?\d*)', expand=False)
+            )
+            combined_df[col] = pd.to_numeric(combined_df[col], errors="coerce")
+
+    # Deduplicate monthly records before processing auxiliary sheets
+    if not combined_df.empty:
+        combined_df["Date"] = pd.to_datetime(combined_df["Date"], dayfirst=True)
+        combined_df = combined_df.drop_duplicates(subset=["Date", "Shed"], keep="last")
 
     # Try to find and process Bird and Tray sheets (case-insensitive match)
     bird_sheet = _try_find_sheet(all_sheets, "bird")
