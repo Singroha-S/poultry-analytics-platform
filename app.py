@@ -414,11 +414,11 @@ def get_sheet_max_dates(gsheet_url: Optional[str] = None, gsheet_gid: Optional[s
 sheet_max_dates = get_sheet_max_dates(gsheet_url if gsheet_url else None, gsheet_gid if gsheet_gid else None, sa_file)
 
 # Add logo to the top of the sidebar for high visibility
-st.sidebar.image("assets/vsf_logo.png", use_container_width=True)
+st.sidebar.image("assets/vsf_logo.png", width="stretch")
 
 # Sidebar filters (friendly for non-technical users)
 # Manual refresh button for non-technical users
-if st.sidebar.button("🔄 Refresh Data", use_container_width=True, help="Fetch the latest data from Google Sheets immediately"):
+if st.sidebar.button("🔄 Refresh Data", width="stretch", help="Fetch the latest data from Google Sheets immediately"):
     st.cache_data.clear()
     st.sidebar.success("Fetching fresh data...")
     st.rerun()
@@ -629,7 +629,7 @@ with tab1:
             title="Fresh Eggs Over Time"
         )
         fig_eggs.update_yaxes(title_text="Fresh Eggs")
-        st.plotly_chart(fig_eggs, use_container_width=True)
+        st.plotly_chart(fig_eggs, width="stretch")
     
     with col2:
         st.subheader("Daily Bird Balance")
@@ -642,7 +642,7 @@ with tab1:
             title="Total Bird Balance Over Time"
         )
         fig_birds.update_yaxes(title_text="Bird Balance")
-        st.plotly_chart(fig_birds, use_container_width=True)
+        st.plotly_chart(fig_birds, width="stretch")
     
     col1, col2 = st.columns(2)
     
@@ -657,7 +657,7 @@ with tab1:
             title="Average Production %"
         )
         fig_prod.update_yaxes(title_text="Production %")
-        st.plotly_chart(fig_prod, use_container_width=True)
+        st.plotly_chart(fig_prod, width="stretch")
     
     with col2:
         st.subheader("Mortality Rate Trend")
@@ -670,7 +670,7 @@ with tab1:
             title="Daily Mortality Count"
         )
         fig_mort.update_yaxes(title_text="Mortality Count")
-        st.plotly_chart(fig_mort, use_container_width=True)
+        st.plotly_chart(fig_mort, width="stretch")
 
     if "Bird_Weight" in filtered_df.columns or "Tray_Weight" in filtered_df.columns:
         col1, col2 = st.columns(2)
@@ -693,7 +693,7 @@ with tab1:
                     title="Average Bird Weight Over Time"
                 )
                 fig_bird_weight.update_yaxes(title_text="Bird Weight (g)")
-                st.plotly_chart(fig_bird_weight, use_container_width=True)
+                st.plotly_chart(fig_bird_weight, width="stretch")
             else:
                 st.info("No Bird Weight data available.")
 
@@ -716,7 +716,7 @@ with tab1:
                     title="Average Tray Weight Over Time"
                 )
                 fig_tray_weight.update_yaxes(title_text="Tray Weight (g)")
-                st.plotly_chart(fig_tray_weight, use_container_width=True)
+                st.plotly_chart(fig_tray_weight, width="stretch")
             else:
                 st.info("No Tray Weight data available.")
 
@@ -744,7 +744,7 @@ with tab2:
             legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
             hovermode="x unified"
         )
-        st.plotly_chart(fig_egg_comp, use_container_width=True)
+        st.plotly_chart(fig_egg_comp, width="stretch")
     
     with col2:
         st.subheader("Tray Types Distribution")
@@ -763,7 +763,7 @@ with tab2:
             legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
             hovermode="x unified"
         )
-        st.plotly_chart(fig_trays, use_container_width=True)
+        st.plotly_chart(fig_trays, width="stretch")
     
     st.subheader("Age vs Production Performance")
     age_prod = filtered_df.groupby("Date").agg({
@@ -781,7 +781,7 @@ with tab2:
         yaxis2=dict(title="Production %", overlaying="y", side="right"),
         hovermode="x unified"
     )
-    st.plotly_chart(fig_age, use_container_width=True)
+    st.plotly_chart(fig_age, width="stretch")
 
 # Tab 3: Shed Details
 with tab3:
@@ -815,7 +815,7 @@ with tab3:
             title=f"{selected_shed} - Fresh Eggs",
             markers=True
         )
-        st.plotly_chart(fig_shed_eggs, use_container_width=True)
+        st.plotly_chart(fig_shed_eggs, width="stretch")
     
     with col2:
         fig_shed_prod = px.line(
@@ -825,7 +825,7 @@ with tab3:
             title=f"{selected_shed} - Production %",
             markers=True
         )
-        st.plotly_chart(fig_shed_prod, use_container_width=True)
+        st.plotly_chart(fig_shed_prod, width="stretch")
     
     # Shed comparison
     st.subheader("Shed Comparison (Latest Date)")
@@ -841,7 +841,7 @@ with tab3:
             title="Fresh Eggs by Shed (Latest Date)",
             color="Shed"
         )
-        st.plotly_chart(fig_comp_eggs, use_container_width=True)
+        st.plotly_chart(fig_comp_eggs, width="stretch")
     
     with col2:
         fig_comp_prod = px.bar(
@@ -851,7 +851,7 @@ with tab3:
             title="Production % by Shed (Latest Date)",
             color="Shed"
         )
-        st.plotly_chart(fig_comp_prod, use_container_width=True)
+        st.plotly_chart(fig_comp_prod, width="stretch")
 
 # Tab 4: Data Table
 with tab4:
@@ -882,7 +882,7 @@ with tab4:
         except Exception:
             display_df["Date"] = display_df["Date"].astype(str)
 
-    st.dataframe(display_df, use_container_width=True, height=400)
+    st.dataframe(display_df, width="stretch", height=400)
     
     # Download button
     csv = filtered_df.to_csv(index=False)
@@ -975,7 +975,7 @@ with tab5:
             "Lowest Recorded": "{:,.0f}",
             "Highest Recorded": "{:,.0f}"
         }),
-        use_container_width=True
+        width="stretch"
     )
 
 # Footer
