@@ -29,15 +29,14 @@ except Exception:
     AuthorizedSession = None
 
 try:
-    from dotenv import load_dotenv
-    # Use an absolute path to find the .env file in the project root
-    env_path = Path(__file__).resolve().parent / ".env"
-    if env_path.exists():
-        load_dotenv(dotenv_path=env_path)
-    else:
-        st.sidebar.warning("⚠️ .env file not found in project root.")
+    if not os.environ.get("GSHEET_ID"):
+        from dotenv import load_dotenv
+        # Use an absolute path to find the .env file in the project root
+        env_path = Path(__file__).resolve().parent / ".env"
+        if env_path.exists():
+            load_dotenv(dotenv_path=env_path)
 except ImportError:
-    st.sidebar.warning("⚠️ 'python-dotenv' package not installed. .env file will be ignored.")
+    pass
 
 # Page configuration
 st.set_page_config(
