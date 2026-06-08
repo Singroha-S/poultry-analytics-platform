@@ -29,12 +29,11 @@ except Exception:
     AuthorizedSession = None
 
 try:
-    if not os.environ.get("GSHEET_ID"):
-        from dotenv import load_dotenv
-        # Use an absolute path to find the .env file in the project root
-        env_path = Path(__file__).resolve().parent / ".env"
-        if env_path.exists():
-            load_dotenv(dotenv_path=env_path)
+    from dotenv import load_dotenv
+    # Load .env if it exists to ensure local SERVICE_ACCOUNT_FILE and GSHEET_ID are available
+    env_path = Path(__file__).resolve().parent / ".env"
+    if env_path.exists():
+        load_dotenv(dotenv_path=env_path, override=False)
 except ImportError:
     pass
 
@@ -196,10 +195,15 @@ def _build_csv_url(sheet_id: str, gid: Optional[str] = None):
 def _get_google_creds(scopes):
     """Helper to get credentials from Streamlit Secrets (Prod) or File (Dev)."""
     # 1. Try Streamlit Secrets (Recommended for Public Repos)
-    if "gcp_service_account" in st.secrets:
-        return service_account.Credentials.from_service_account_info(
-            st.secrets["gcp_service_account"], scopes=scopes
-        )
+    try:
+        # Accessing st.secrets when missing can raise an exception in some environments
+        if "gcp_service_account" in st.secrets:
+            return service_account.Credentials.from_service_account_info(
+                st.secrets["gcp_service_account"], scopes=scopes
+            )
+    except Exception:
+        # Silently fail and proceed to local file check
+        pass
     
     # 2. Try Local File (Fall back for local development)
     sa_file = os.environ.get("SERVICE_ACCOUNT_FILE")
@@ -288,9 +292,11 @@ def _extract_records_from_raw_df(df: pd.DataFrame):
 @st.cache_data
 def load_data(gsheet_url: Optional[str] = None, gsheet_gid: Optional[str] = None, sa_file: Optional[str] = None):
     # If the user has provided a Google Sheet URL/ID, try that first
-    sheet_id = _parse_sheet_id(gsheet_url) if gsheet_url else None
+    sheet_id = _parse_sheet_id(gsheet_url) if gsheet_url else os.environ.get("GSHEET_ID")
+    
     if not sheet_id:
-        st.error("Missing Google Sheet ID or URL. Please set `GSHEET_URL` or `GSHEET_ID` in your environment or .env file.")
+        st.error("Missing Google Sheet ID or URL.")
+        st.info("💡 **Production fix:** Go to your Streamlit Cloud Settings -> Secrets and add `GSHEET_ID = 'your_id_here'`")
         st.stop()
 
     try:
@@ -537,7 +543,7 @@ latest_date = filtered_df["Date"].max()
 today_data = filtered_df[filtered_df["Date"] == latest_date]
 
 st.markdown(f"### 🚀 Latest Results: **{latest_date.strftime('%d %B, %Y')}**")
-col1, col2, col3, col4, col5 = st.columns(5)
+col1, col2, col3, col4, col5, col6 = st.columns(6)
 
 with col1:
     total_birds = 0
@@ -550,19 +556,25 @@ with col1:
 
 with col2:
     fresh_eggs = int(today_data['Fresh_Eggs'].sum()) if 'Fresh_Eggs' in today_data.columns and today_data['Fresh_Eggs'].notna().any() else 0
-    st.metric("Fresh Eggs", f"{fresh_eggs:,}", delta=None)
+    st.metric("Fresh Eggs", f"{fresh_eggs:,}")
 
 with col3:
+    crack = today_data['Crack_Eggs'].sum() if 'Crack_Eggs' in today_data.columns else 0
+    leaker = today_data['Leaker_Eggs'].sum() if 'Leaker_Eggs' in today_data.columns else 0
+    total_produced = int(fresh_eggs + crack + leaker)
+    st.metric("Total Produced", f"{total_produced:,}", help="Sum of Fresh, Crack, and Leaker eggs")
+
+with col4:
     mortality = int(today_data['Mortality'].sum()) if 'Mortality' in today_data.columns and today_data['Mortality'].notna().any() else 0
     st.metric("Mortality", f"{mortality}", delta=None)
 
-with col4:
+with col5:
     prod_pct = None
     if 'Production_Pct' in today_data.columns and today_data['Production_Pct'].notna().any():
         prod_pct = today_data['Production_Pct'].mean()
     st.metric("Avg Production %", f"{prod_pct:.2f}%" if prod_pct is not None else "N/A", delta=None)
 
-with col5:
+with col6:
     fresh_trays = int(today_data['Fresh_Tray'].sum()) if 'Fresh_Tray' in today_data.columns and today_data['Fresh_Tray'].notna().any() else 0
     st.metric("Total Fresh Trays", f"{fresh_trays:,}", delta=None)
 if "Bird_Weight" in df.columns or "Tray_Weight" in df.columns:

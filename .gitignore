@@ -12,3 +12,5 @@ credentials.json
 *.key.json
 secrets/
 poultry-analytics-platform-*.json
+.streamlit/secrets.toml
+secrets.toml
