@@ -193,16 +193,30 @@ def _build_csv_url(sheet_id: str, gid: Optional[str] = None):
     return f"https://docs.google.com/spreadsheets/d/{sheet_id}/gviz/tq?tqx=out:csv"
 
 
-def _download_gsheet_excel(sheet_id: str):
+def _get_google_creds(scopes):
+    """Helper to get credentials from Streamlit Secrets (Prod) or File (Dev)."""
+    # 1. Try Streamlit Secrets (Recommended for Public Repos)
+    if "gcp_service_account" in st.secrets:
+        return service_account.Credentials.from_service_account_info(
+            st.secrets["gcp_service_account"], scopes=scopes
+        )
+    
+    # 2. Try Local File (Fall back for local development)
     sa_file = os.environ.get("SERVICE_ACCOUNT_FILE")
-    if not sa_file or not os.path.exists(sa_file):
-        raise FileNotFoundError("SERVICE_ACCOUNT_FILE not set or file missing.")
+    if sa_file and os.path.exists(sa_file):
+        return service_account.Credentials.from_service_account_file(sa_file, scopes=scopes)
+        
+    return None
 
+def _download_gsheet_excel(sheet_id: str):
     scopes = [
         "https://www.googleapis.com/auth/drive.readonly",
         "https://www.googleapis.com/auth/spreadsheets.readonly",
     ]
-    creds = service_account.Credentials.from_service_account_file(sa_file, scopes=scopes)
+    creds = _get_google_creds(scopes)
+    if not creds:
+        raise FileNotFoundError("No Google credentials found in st.secrets or via SERVICE_ACCOUNT_FILE.")
+
     authed = AuthorizedSession(creds)
     xlsx_url = f"https://docs.google.com/spreadsheets/d/{sheet_id}/export?format=xlsx"
     resp = authed.get(xlsx_url)
@@ -279,17 +293,14 @@ def load_data(gsheet_url: Optional[str] = None, gsheet_gid: Optional[str] = None
         st.error("Missing Google Sheet ID or URL. Please set `GSHEET_URL` or `GSHEET_ID` in your environment or .env file.")
         st.stop()
 
-    if not sa_file:
-        sa_file = os.environ.get("SERVICE_ACCOUNT_FILE")
-
-    if not sa_file or not os.path.exists(sa_file):
-        st.error(f"Service account file not found: '{sa_file}'")
-        st.info("💡 **To resolve:** Ensure your Google Cloud JSON key path is correctly set in the `SERVICE_ACCOUNT_FILE` environment variable.")
-        st.stop()
-
     try:
         scopes = ["https://www.googleapis.com/auth/drive.readonly", "https://www.googleapis.com/auth/spreadsheets.readonly"]
-        creds = service_account.Credentials.from_service_account_file(sa_file, scopes=scopes)
+        creds = _get_google_creds(scopes)
+        if not creds:
+            st.error("Google credentials not found.")
+            st.info("💡 **Local Dev:** Set `SERVICE_ACCOUNT_FILE` in .env\n\n💡 **Production:** Add `gcp_service_account` to Streamlit Secrets.")
+            st.stop()
+            
         authed = AuthorizedSession(creds)
 
         xls = _download_gsheet_excel(sheet_id)
@@ -380,23 +391,19 @@ def get_sheet_max_dates(gsheet_url: Optional[str] = None, gsheet_gid: Optional[s
     if not sheet_id:
         return {}
 
-    if not sa_file:
-        sa_file = os.environ.get("SERVICE_ACCOUNT_FILE")
-
-    if sa_file and os.path.exists(sa_file):
-        try:
-            xls = _download_gsheet_excel(sheet_id)
-            sheet_max = {}
-            for sheet_name in xls.sheet_names:
-                if sheet_name.lower() in {"birdweight", "trayweight", "sale", "final"} or "sheet" in sheet_name.lower():
-                    continue
-                df_s = pd.read_excel(xls, sheet_name=sheet_name, header=None, dtype=str)
-                extracted = _extract_records_from_raw_df(df_s)
-                if not extracted.empty:
-                    sheet_max[sheet_name] = extracted["Date"].max()
-            return sheet_max
-        except Exception:
-            pass
+    try:
+        xls = _download_gsheet_excel(sheet_id)
+        sheet_max = {}
+        for sheet_name in xls.sheet_names:
+            if sheet_name.lower() in {"birdweight", "trayweight", "sale", "final"} or "sheet" in sheet_name.lower():
+                continue
+            df_s = pd.read_excel(xls, sheet_name=sheet_name, header=None, dtype=str)
+            extracted = _extract_records_from_raw_df(df_s)
+            if not extracted.empty:
+                sheet_max[sheet_name] = extracted["Date"].max()
+        return sheet_max
+    except Exception:
+        pass
     return {}
 
 sheet_max_dates = get_sheet_max_dates(gsheet_url if gsheet_url else None, gsheet_gid if gsheet_gid else None, sa_file)
