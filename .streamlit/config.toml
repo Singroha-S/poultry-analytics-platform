@@ -4,7 +4,8 @@ enableCORS = false
 
 [theme]
 base = "light"
-primaryColor = "#0a66c2"
+primaryColor = "#059669"
 backgroundColor = "#ffffff"
-secondaryBackgroundColor = "#f9fafb"
-textColor = "#111111"
+secondaryBackgroundColor = "#f3f8f5"
+textColor = "#0f1f17"
+font = "sans serif"

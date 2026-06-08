@@ -6,6 +6,7 @@ from urllib.parse import urlparse
 from typing import Optional
 import plotly.graph_objects as go
 import plotly.express as px
+import plotly.io as pio
 from pathlib import Path
 import random
 import os
@@ -45,18 +46,63 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Hide Streamlit chrome for professional appearance (keep sidebar toggle visible)
-hide_st_style = """
-    <style>
-    #MainMenu {visibility: hidden;}
-    footer {visibility: hidden;}
-    header {visibility: hidden;}
-    [data-testid="stSidebarNav"] {display: block !important;}
-    </style>
-    """
-st.markdown(hide_st_style, unsafe_allow_html=True)
+# ---------------------------------------------------------------------------
+# Design system / theme
+# ---------------------------------------------------------------------------
+# Brand palette (emerald + warm amber — fits a poultry/farm brand)
+BRAND = {
+    "ink": "#0f1f17",          # near-black green for text
+    "muted": "#5b6b62",        # secondary text
+    "primary": "#059669",      # emerald
+    "primary_dark": "#047857",
+    "primary_light": "#10b981",
+    "accent": "#f59e0b",       # amber
+    "danger": "#ef4444",
+    "info": "#3b82f6",
+    "violet": "#8b5cf6",
+    "surface": "#ffffff",
+    "line": "rgba(15,31,23,0.08)",
+}
+CHART_COLORS = ["#059669", "#3b82f6", "#f59e0b", "#8b5cf6", "#ef4444", "#14b8a6"]
 
-# Load background image from assets and embed it for the CSS background
+# A single Plotly template so every chart shares one clean, modern look
+pio.templates["vsf"] = go.layout.Template(
+    layout=dict(
+        font=dict(family="Inter, 'Segoe UI', system-ui, sans-serif", size=13, color=BRAND["ink"]),
+        title=dict(font=dict(size=16, color=BRAND["ink"]), x=0.01, xanchor="left", pad=dict(b=10)),
+        paper_bgcolor="rgba(0,0,0,0)",
+        plot_bgcolor="rgba(0,0,0,0)",
+        colorway=CHART_COLORS,
+        margin=dict(l=10, r=10, t=56, b=10),
+        hoverlabel=dict(bgcolor="white", bordercolor=BRAND["line"],
+                        font=dict(family="Inter, sans-serif", size=12, color=BRAND["ink"])),
+        xaxis=dict(showgrid=False, zeroline=False, linecolor=BRAND["line"],
+                   tickcolor=BRAND["line"], title=dict(font=dict(size=12, color=BRAND["muted"]))),
+        yaxis=dict(gridcolor="rgba(15,31,23,0.06)", zeroline=False, linecolor="rgba(0,0,0,0)",
+                   title=dict(font=dict(size=12, color=BRAND["muted"]))),
+        legend=dict(bgcolor="rgba(0,0,0,0)", font=dict(size=12)),
+    )
+)
+pio.templates.default = "vsf"
+px.defaults.template = "vsf"
+px.defaults.color_discrete_sequence = CHART_COLORS
+
+
+def style_chart(fig, height: int = 320, show_legend: bool = True):
+    """Apply consistent finishing touches to any Plotly figure."""
+    fig.update_layout(
+        height=height,
+        showlegend=show_legend,
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="left", x=0),
+        hovermode="x unified",
+    )
+    # Smooth, rounded lines + soft markers for line charts
+    fig.update_traces(selector=dict(type="scatter"),
+                      line=dict(width=2.6), marker=dict(size=6))
+    return fig
+
+
+# Load background image from assets and embed it for a subtle hero banner
 def get_background_image():
     asset_path = Path("assets") / "bg1.jpeg"
     if asset_path.exists():
@@ -66,108 +112,179 @@ def get_background_image():
 
 background_url = get_background_image() or "https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?auto=format&fit=crop&w=1400&q=80"
 
-# Make background white and increase readability for non-technical users
 css = f"""
     <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+
+    /* Hide default Streamlit chrome */
+    #MainMenu, footer {{ visibility: hidden; }}
+    [data-testid="stHeader"] {{ background: rgba(0,0,0,0); }}
+    [data-testid="stSidebarNav"] {{ display: block !important; }}
+
+    /* ---- App canvas: clean, soft gradient ---- */
     html, body, .stApp {{
-        background-image: url('{background_url}');
+        font-family: 'Inter', system-ui, sans-serif;
+        background: linear-gradient(160deg, #f3f8f5 0%, #eef4f9 45%, #f6f4ef 100%) fixed;
+        color: {BRAND['ink']};
+    }}
+    .block-container {{
+        padding-top: 1.2rem !important;
+        max-width: 1300px;
+    }}
+
+    /* ---- Typography ---- */
+    h1, h2, h3, h4 {{ font-family: 'Inter', sans-serif; color: {BRAND['ink']}; letter-spacing: -0.01em; }}
+    h1 {{ font-weight: 800 !important; font-size: clamp(28px, 4vw, 40px) !important; margin: 4px 0 2px 0 !important; }}
+    h2 {{ font-weight: 700 !important; }}
+    h3 {{ font-weight: 700 !important; font-size: 1.18rem !important; }}
+    .stApp p, .stApp li, .stApp label {{ color: {BRAND['ink']}; }}
+    a {{ color: {BRAND['primary_dark']} !important; font-weight: 600; }}
+
+    /* ---- Hero banner ---- */
+    .hero {{
+        position: relative;
+        border-radius: 22px;
+        padding: 30px 34px;
+        margin-bottom: 18px;
+        color: #fff;
+        background:
+            linear-gradient(120deg, rgba(4,120,87,0.94) 0%, rgba(5,150,105,0.86) 55%, rgba(13,148,136,0.82) 100%),
+            url('{background_url}');
         background-size: cover;
-        background-position: center center;
-        background-attachment: fixed;
-        background-repeat: no-repeat;
-        color: #111111 !important;
-    }}
-    .stApp, .main, .block-container {{
-        background-color: rgba(255,255,255,0.78) !important;
-        box-shadow: 0 20px 60px rgba(0,0,0,0.08);
-        border: 1px solid rgba(255,255,255,0.9);
-        padding-top: 1.5rem !important;
-    }}
-    /* Move the sidebar content (logo) to the very top corner */
-    [data-testid="stSidebar"] [data-testid="stVerticalBlock"] {{
-        padding-top: 0rem !important;
-        gap: 0rem !important;
-    }}
-    [data-testid="stSidebar"], .css-1lcbmhc.e1fqkh3o2 {{
-        background-color: rgba(255,255,255,0.95) !important;
-        color: #111111 !important;
-    }}
-    header, .css-1avcm0n, .css-1rs6os, [data-testid="stToolbar"] {{
-        background-color: rgba(255,255,255,0.95) !important;
-        color: #111111 !important;
-    }}
-    header * {{ color: #111111 !important; }}
-    .stExpanderHeader, .streamlit-expanderHeader, button[aria-expanded], .stButton>button, .stDownloadButton>button {{
-        color: #111111 !important;
-        background-color: #f8fafc !important;
-        border-color: #d1d5db !important;
-    }}
-    .stApp, .stApp * {{ color: #111111 !important; }}
-    .css-1d391kg {{padding: 1rem;}} /* layout padding tweak */
-    .big-instruction {{font-size:18px; color:#111111}}
-    
-    /* Sidebar Styling */
-    [data-testid="stSidebar"] {{
-        border-right: 1px solid rgba(0,0,0,0.05);
-    }}
-    .sidebar-header {{
-        font-size: 20px; font-weight: 700; color: #064e3b; margin-top: 1rem;
-    }}
-    .stMetricValue, .stMetricLabel, .stMetricDelta {{ color: #111111 !important; }}
-    .stButton>button, .stDownloadButton>button {{ color: #111111 !important; background-color: #eef2ff !important; }}
-    a {{ color: #0a66c2 !important; }}
-    .metric-large .stMetricValue {{font-size:28px}}
-    /* Animated quote header */
-    @keyframes scrollLeft {{
-        0% {{ transform: translateX(100%); opacity: 0; }}
-        5% {{ opacity: 1; }}
-        95% {{ opacity: 1; }}
-        100% {{ transform: translateX(-100%); opacity: 0; }}
-    }}
-    .scrolling-quote-wrapper {{
-        width: 100%;
+        background-position: center;
+        box-shadow: 0 18px 40px rgba(4,120,87,0.22);
         overflow: hidden;
-        display: block;
-        box-sizing: border-box;
-        padding: 0px 0 5px 0;
     }}
-    .scrolling-quote {{
-        display: inline-block;
-        animation: scrollLeft 12s linear infinite;
-        white-space: nowrap;
-        font-weight: 600;
-        color: #2d5016;
-        padding: 4px 20px;
-        font-size: clamp(20px, 4.5vw, 48px);
+    .hero h1 {{ color: #fff !important; margin: 0 !important; font-size: clamp(26px, 3.6vw, 38px) !important; }}
+    .hero .tagline {{
+        display: inline-block; margin-top: 6px; font-weight: 500;
+        font-size: clamp(14px, 1.6vw, 17px); color: rgba(255,255,255,0.92);
     }}
-    /* Title Spacing: Adjusted to be lower than the scrolling line */
-    h1 {{
-        margin-top: 15px !important;
-        padding-top: 0px !important;
+    .hero .pill-row {{ margin-top: 16px; display: flex; flex-wrap: wrap; gap: 10px; }}
+    .hero .pill {{
+        background: rgba(255,255,255,0.18); border: 1px solid rgba(255,255,255,0.28);
+        backdrop-filter: blur(6px); padding: 6px 14px; border-radius: 999px;
+        font-size: 13.5px; font-weight: 600; color: #fff;
     }}
-    /* Tabs: make them more prominent and easier to find */
-    div[role="tablist"] > button[role="tab"] {{
-        font-size: clamp(16px, 2.4vw, 22px) !important;
-        font-weight: 700 !important;
-        padding: 10px 18px !important;
+    .hero .pill b {{ font-weight: 800; }}
+
+    /* ---- Section heading ---- */
+    .section-title {{
+        font-size: 1.15rem; font-weight: 800; color: {BRAND['ink']};
+        margin: 6px 0 2px 0; display: flex; align-items: center; gap: 8px;
+    }}
+
+    /* ---- KPI metric cards (st.metric) ---- */
+    [data-testid="stMetric"] {{
+        background: {BRAND['surface']};
+        border: 1px solid {BRAND['line']};
+        border-radius: 16px;
+        padding: 16px 18px;
+        box-shadow: 0 4px 14px rgba(15,31,23,0.05);
+        transition: transform .15s ease, box-shadow .15s ease;
+        border-top: 3px solid {BRAND['primary']};
+    }}
+    [data-testid="stMetric"]:hover {{
+        transform: translateY(-3px);
+        box-shadow: 0 12px 26px rgba(15,31,23,0.10);
+    }}
+    [data-testid="stMetricLabel"] {{
+        font-size: 0.82rem !important; font-weight: 600 !important;
+        color: {BRAND['muted']} !important; text-transform: uppercase; letter-spacing: .04em;
+    }}
+    [data-testid="stMetricValue"] {{
+        font-size: 1.7rem !important; font-weight: 800 !important; color: {BRAND['ink']} !important;
+    }}
+
+    /* ---- Charts get a card frame ---- */
+    [data-testid="stPlotlyChart"] {{
+        background: {BRAND['surface']};
+        border: 1px solid {BRAND['line']};
+        border-radius: 16px;
+        padding: 8px 8px 4px 8px;
+        box-shadow: 0 4px 14px rgba(15,31,23,0.05);
+    }}
+
+    /* ---- Sidebar ---- */
+    [data-testid="stSidebar"] {{
+        background: {BRAND['surface']};
+        border-right: 1px solid {BRAND['line']};
+    }}
+    [data-testid="stSidebar"] [data-testid="stVerticalBlock"] {{ gap: 0.5rem !important; }}
+    .sidebar-header {{
+        font-size: 15px; font-weight: 800; color: {BRAND['primary_dark']};
+        margin: 14px 0 2px 0; text-transform: uppercase; letter-spacing: .03em;
+    }}
+
+    /* ---- Buttons ---- */
+    .stButton>button, .stDownloadButton>button {{
+        background: {BRAND['primary']} !important;
+        color: #fff !important;
+        border: none !important;
         border-radius: 10px !important;
-        margin: 0 6px !important;
-        background-color: rgba(255,255,255,0.9) !important;
-        color: #064e3b !important;
-        border: 1px solid rgba(6,78,59,0.08) !important;
-        box-shadow: none !important;
-        transition: transform 0.12s ease, box-shadow 0.12s ease;
+        font-weight: 700 !important;
+        padding: 0.5rem 1rem !important;
+        box-shadow: 0 4px 12px rgba(5,150,105,0.25) !important;
+        transition: transform .12s ease, box-shadow .12s ease;
     }}
-    div[role="tablist"] > button[role="tab"][aria-selected="true"] {{
-        background: linear-gradient(90deg, #d1fae5, #bbf7d0) !important;
-        color: #064e3b !important;
-        box-shadow: 0 6px 18px rgba(34,197,94,0.12) !important;
-        transform: translateY(-3px) !important;
+    .stButton>button:hover, .stDownloadButton>button:hover {{
+        transform: translateY(-1px);
+        box-shadow: 0 8px 18px rgba(5,150,105,0.32) !important;
+    }}
+
+    /* ---- Tabs ---- */
+    div[role="tablist"] {{ gap: 6px; border-bottom: 1px solid {BRAND['line']}; padding-bottom: 2px; }}
+    div[role="tablist"] > button[role="tab"] {{
+        font-size: 15px !important;
+        font-weight: 600 !important;
+        padding: 9px 18px !important;
+        border-radius: 10px 10px 0 0 !important;
+        background: transparent !important;
+        color: {BRAND['muted']} !important;
+        border: none !important;
+        transition: all .15s ease;
     }}
     div[role="tablist"] > button[role="tab"]:hover {{
-        transform: translateY(-2px) !important;
-        box-shadow: 0 6px 14px rgba(34,197,94,0.06) !important;
+        color: {BRAND['primary_dark']} !important;
+        background: rgba(5,150,105,0.06) !important;
     }}
+    div[role="tablist"] > button[role="tab"][aria-selected="true"] {{
+        color: {BRAND['primary_dark']} !important;
+        background: rgba(5,150,105,0.10) !important;
+        border-bottom: 3px solid {BRAND['primary']} !important;
+        font-weight: 800 !important;
+    }}
+
+    /* ---- Expander + info callouts ---- */
+    [data-testid="stExpander"] {{
+        border: 1px solid {BRAND['line']} !important;
+        border-radius: 14px !important;
+        background: {BRAND['surface']};
+        box-shadow: 0 2px 8px rgba(15,31,23,0.04);
+    }}
+    [data-testid="stAlert"] {{ border-radius: 14px; }}
+
+    /* ---- Insight cards ---- */
+    .insight-card {{
+        background: {BRAND['surface']};
+        border: 1px solid {BRAND['line']};
+        border-left: 4px solid {BRAND['primary']};
+        border-radius: 14px;
+        padding: 16px 18px;
+        box-shadow: 0 4px 14px rgba(15,31,23,0.05);
+        height: 100%;
+    }}
+    .insight-card .ic-label {{ font-size: .8rem; font-weight: 700; color: {BRAND['muted']};
+        text-transform: uppercase; letter-spacing: .04em; }}
+    .insight-card .ic-main {{ font-size: 1.5rem; font-weight: 800; color: {BRAND['ink']}; margin: 4px 0 0 0; }}
+    .insight-card .ic-sub {{ font-size: .9rem; color: {BRAND['muted']}; margin-top: 2px; }}
+    .insight-card.amber {{ border-left-color: {BRAND['accent']}; }}
+    .insight-card.blue {{ border-left-color: {BRAND['info']}; }}
+    .insight-card.red  {{ border-left-color: {BRAND['danger']}; }}
+
+    /* dataframe rounding */
+    [data-testid="stDataFrame"] {{ border-radius: 12px; overflow: hidden; }}
+    hr {{ border-color: {BRAND['line']}; }}
     </style>
     """
 st.markdown(css, unsafe_allow_html=True)
@@ -288,53 +405,72 @@ def _extract_records_from_raw_df(df: pd.DataFrame):
         row += 1
     return pd.DataFrame(records)
 
-# Load data (supports fallback to local output CSV)
+def _load_local_csv():
+    """Fallback data source used when no live Google Sheet / credentials are configured.
+
+    Reads the most complete CSV bundled in the output/ folder so the dashboard can run
+    offline (local development, demos, or when credentials are unavailable).
+    """
+    candidates = [
+        Path("output") / "all_reports_combined.csv",
+        Path("output") / "june26_clean.csv",
+    ]
+    for p in candidates:
+        if p.exists():
+            try:
+                return pd.read_csv(p)
+            except Exception:
+                continue
+    return None
+
+
+# Load data (Google Sheet when configured, otherwise the bundled local CSV)
 @st.cache_data
 def load_data(gsheet_url: Optional[str] = None, gsheet_gid: Optional[str] = None, sa_file: Optional[str] = None):
     # If the user has provided a Google Sheet URL/ID, try that first
     sheet_id = _parse_sheet_id(gsheet_url) if gsheet_url else os.environ.get("GSHEET_ID")
-    
-    if not sheet_id:
-        st.error("Missing Google Sheet ID or URL.")
-        st.info("💡 **Production fix:** Go to your Streamlit Cloud Settings -> Secrets and add `GSHEET_ID = 'your_id_here'`")
+    scopes = ["https://www.googleapis.com/auth/drive.readonly", "https://www.googleapis.com/auth/spreadsheets.readonly"]
+    creds = _get_google_creds(scopes) if (sheet_id and service_account is not None) else None
+
+    df = None
+    if sheet_id and creds:
+        try:
+            authed = AuthorizedSession(creds)
+            xls = _download_gsheet_excel(sheet_id)
+            all_dfs = []
+            for sheet_name in xls.sheet_names:
+                if sheet_name.lower() in {"birdweight", "trayweight", "sale", "final"}:
+                    continue
+                # Force dtype=str to prevent the Excel engine from incorrectly swapping day/month
+                df_s = pd.read_excel(xls, sheet_name=sheet_name, header=None, dtype=str)
+                extracted = _extract_records_from_raw_df(df_s)
+                if not extracted.empty:
+                    all_dfs.append(extracted)
+
+            df = pd.concat(all_dfs, ignore_index=True) if all_dfs else pd.DataFrame()
+
+            # Deduplicate: If the same date/shed combo exists in multiple sheets, keep the last one found
+            if not df.empty and "Date" in df.columns and "Shed" in df.columns:
+                df = df.drop_duplicates(subset=["Date", "Shed"], keep="last")
+        except Exception as e:
+            st.warning(f"⚠️ Could not read the Google Sheet ({e}). Showing bundled local data instead.")
+            df = None
+
+    # Fall back to the bundled local CSV when no live sheet/credentials are available
+    if df is None or df.empty:
+        df = _load_local_csv()
+
+    if df is None or df.empty:
+        st.error("No data source available.")
+        st.info("💡 Configure `GSHEET_ID` + Google credentials, or keep a CSV in the `output/` folder.")
         st.stop()
 
-    try:
-        scopes = ["https://www.googleapis.com/auth/drive.readonly", "https://www.googleapis.com/auth/spreadsheets.readonly"]
-        creds = _get_google_creds(scopes)
-        if not creds:
-            st.error("Google credentials not found.")
-            st.info("💡 **Local Dev:** Set `SERVICE_ACCOUNT_FILE` in .env\n\n💡 **Production:** Add `gcp_service_account` to Streamlit Secrets.")
-            st.stop()
-            
-        authed = AuthorizedSession(creds)
-
-        xls = _download_gsheet_excel(sheet_id)
-        all_dfs = []
-        for sheet_name in xls.sheet_names:
-            if sheet_name.lower() in {"birdweight", "trayweight", "sale", "final"}:
-                continue
-            # Force dtype=str to prevent the Excel engine from incorrectly swapping day/month
-            df_s = pd.read_excel(xls, sheet_name=sheet_name, header=None, dtype=str)
-            extracted = _extract_records_from_raw_df(df_s)
-            if not extracted.empty:
-                all_dfs.append(extracted)
-        
-        df = pd.concat(all_dfs, ignore_index=True) if all_dfs else pd.DataFrame()
-
-        # Deduplicate: If the same date/shed combo exists in multiple sheets, keep the last one found
-        if not df.empty and "Date" in df.columns and "Shed" in df.columns:
-            df = df.drop_duplicates(subset=["Date", "Shed"], keep="last")
-
-        if not df.empty and "Date" in df.columns:
-            # Force conversion to datetime to ensure correct sorting and max() operations
-            df["Date"] = pd.to_datetime(df["Date"], dayfirst=True, errors='coerce')
-            df = df.dropna(subset=["Date"])
-        else:
-            st.error("Google Sheet loaded successfully but no 'Date' column was found.")
-            st.stop()
-    except Exception as e:
-        st.error(f"Error reading Google Sheet: {e}")
+    # Force conversion to datetime to ensure correct sorting and max() operations
+    if "Date" in df.columns:
+        df["Date"] = pd.to_datetime(df["Date"], dayfirst=True, errors="coerce")
+        df = df.dropna(subset=["Date"])
+    else:
+        st.error("Data loaded successfully but no 'Date' column was found.")
         st.stop()
 
     # Clean and coerce numeric columns that may contain stray text (e.g. "20 p", "%", commas)
@@ -414,11 +550,11 @@ def get_sheet_max_dates(gsheet_url: Optional[str] = None, gsheet_gid: Optional[s
 sheet_max_dates = get_sheet_max_dates(gsheet_url if gsheet_url else None, gsheet_gid if gsheet_gid else None, sa_file)
 
 # Add logo to the top of the sidebar for high visibility
-st.sidebar.image("assets/vsf_logo.png", width="stretch")
+st.sidebar.image("assets/vsf_logo.png", use_container_width=True)
 
 # Sidebar filters (friendly for non-technical users)
 # Manual refresh button for non-technical users
-if st.sidebar.button("🔄 Refresh Data", width="stretch", help="Fetch the latest data from Google Sheets immediately"):
+if st.sidebar.button("🔄 Refresh Data", use_container_width=True, help="Fetch the latest data from Google Sheets immediately"):
     st.cache_data.clear()
     st.sidebar.success("Fetching fresh data...")
     st.rerun()
@@ -513,25 +649,32 @@ filtered_df = df[
 if selected_cap_date:
     filtered_df = filtered_df[filtered_df["Date"].dt.date <= selected_cap_date]
 
-# Animated poultry quote header
+# Hero banner header
 quotes = [
-    "🐔 Premium Poultry, Premium Care, Premium Results",
-    "🥚 Every Egg Tells a Story of Excellence",
-    "🌾 From Farm to Table with Precision",
-    "💪 Healthy Birds, Happy Farmers, Great Yields",
-    "✨ Analytics-Driven Poultry Excellence"
+    "Premium Poultry, Premium Care, Premium Results",
+    "Every Egg Tells a Story of Excellence",
+    "From Farm to Table with Precision",
+    "Healthy Birds, Happy Farmers, Great Yields",
+    "Analytics-Driven Poultry Excellence",
 ]
-import random
 quote = random.choice(quotes)
-st.markdown(f'<div class="scrolling-quote">{quote}</div>', unsafe_allow_html=True)
-
-# Main title
-st.title("🐔 VSF Farm Analytics")
 latest_date = filtered_df["Date"].max()
+latest_label = latest_date.strftime("%B %d, %Y") if pd.notna(latest_date) else "N/A"
+sheds_label = ", ".join(selected_sheds) if selected_sheds else "None"
+
 st.markdown(
-    f"🗓️ **Range:** `{date_range[0]}` to `{date_range[1]}` | "
-    f"🏠 **Sheds:** `{', '.join(selected_sheds)}` | "
-    f"✅ **Latest Data:** `{latest_date.strftime('%B %d, %Y') if pd.notna(latest_date) else 'N/A'}`"
+    f"""
+    <div class="hero">
+        <h1>🐔 VSF Farm Analytics</h1>
+        <span class="tagline">✨ {quote}</span>
+        <div class="pill-row">
+            <span class="pill">🗓️ <b>{date_range[0]}</b> → <b>{date_range[1]}</b></span>
+            <span class="pill">🏠 Sheds: <b>{sheds_label}</b></span>
+            <span class="pill">✅ Latest data: <b>{latest_label}</b></span>
+        </div>
+    </div>
+    """,
+    unsafe_allow_html=True,
 )
 
 with st.expander("📖 Dashboard Guide: How to read this report"):
@@ -547,7 +690,10 @@ with st.expander("📖 Dashboard Guide: How to read this report"):
 latest_date = filtered_df["Date"].max()
 today_data = filtered_df[filtered_df["Date"] == latest_date]
 
-st.markdown(f"### 🚀 Latest Results: **{latest_date.strftime('%d %B, %Y')}**")
+st.markdown(
+    f'<div class="section-title">🚀 Latest Results — {latest_date.strftime("%d %B, %Y")}</div>',
+    unsafe_allow_html=True,
+)
 col1, col2, col3, col4, col5, col6 = st.columns(6)
 
 with col1:
@@ -619,64 +765,46 @@ with tab1:
     col1, col2 = st.columns(2)
     
     with col1:
-        st.subheader("Daily Fresh Eggs Production")
+        st.markdown('<div class="section-title">🥚 Daily Fresh Eggs Production</div>', unsafe_allow_html=True)
         daily_eggs = filtered_df.groupby("Date")["Fresh_Eggs"].sum().reset_index()
-        fig_eggs = px.line(
-            daily_eggs,
-            x="Date",
-            y="Fresh_Eggs",
-            markers=True,
-            title="Fresh Eggs Over Time"
-        )
+        fig_eggs = px.line(daily_eggs, x="Date", y="Fresh_Eggs", markers=True)
+        fig_eggs.update_traces(line_color=BRAND["primary"], fill="tozeroy",
+                               fillcolor="rgba(5,150,105,0.08)")
         fig_eggs.update_yaxes(title_text="Fresh Eggs")
-        st.plotly_chart(fig_eggs, width="stretch")
-    
+        st.plotly_chart(style_chart(fig_eggs, show_legend=False), use_container_width=True)
+
     with col2:
-        st.subheader("Daily Bird Balance")
+        st.markdown('<div class="section-title">🐔 Daily Bird Balance</div>', unsafe_allow_html=True)
         daily_birds = filtered_df.groupby("Date")["Bird_Balance"].sum().reset_index()
-        fig_birds = px.line(
-            daily_birds,
-            x="Date",
-            y="Bird_Balance",
-            markers=True,
-            title="Total Bird Balance Over Time"
-        )
+        fig_birds = px.line(daily_birds, x="Date", y="Bird_Balance", markers=True)
+        fig_birds.update_traces(line_color=BRAND["info"], fill="tozeroy",
+                                fillcolor="rgba(59,130,246,0.08)")
         fig_birds.update_yaxes(title_text="Bird Balance")
-        st.plotly_chart(fig_birds, width="stretch")
-    
+        st.plotly_chart(style_chart(fig_birds, show_legend=False), use_container_width=True)
+
     col1, col2 = st.columns(2)
-    
+
     with col1:
-        st.subheader("Production Percentage Trend")
+        st.markdown('<div class="section-title">📈 Production Percentage Trend</div>', unsafe_allow_html=True)
         prod_pct = filtered_df.groupby("Date")["Production_Pct"].mean().reset_index()
-        fig_prod = px.line(
-            prod_pct,
-            x="Date",
-            y="Production_Pct",
-            markers=True,
-            title="Average Production %"
-        )
+        fig_prod = px.line(prod_pct, x="Date", y="Production_Pct", markers=True)
+        fig_prod.update_traces(line_color=BRAND["violet"])
         fig_prod.update_yaxes(title_text="Production %")
-        st.plotly_chart(fig_prod, width="stretch")
-    
+        st.plotly_chart(style_chart(fig_prod, show_legend=False), use_container_width=True)
+
     with col2:
-        st.subheader("Mortality Rate Trend")
+        st.markdown('<div class="section-title">⚠️ Mortality Rate Trend</div>', unsafe_allow_html=True)
         mortality = filtered_df.groupby("Date")["Mortality"].sum().reset_index()
-        fig_mort = px.line(
-            mortality,
-            x="Date",
-            y="Mortality",
-            markers=True,
-            title="Daily Mortality Count"
-        )
+        fig_mort = px.bar(mortality, x="Date", y="Mortality")
+        fig_mort.update_traces(marker_color=BRAND["danger"], marker_line_width=0)
         fig_mort.update_yaxes(title_text="Mortality Count")
-        st.plotly_chart(fig_mort, width="stretch")
+        st.plotly_chart(style_chart(fig_mort, show_legend=False), use_container_width=True)
 
     if "Bird_Weight" in filtered_df.columns or "Tray_Weight" in filtered_df.columns:
         col1, col2 = st.columns(2)
         with col1:
             if "Bird_Weight" in filtered_df.columns:
-                st.subheader("Avg Bird Weight")
+                st.markdown('<div class="section-title">⚖️ Avg Bird Weight</div>', unsafe_allow_html=True)
                 if aggregate_weights_weekly:
                     bw = filtered_df.copy()
                     bw["_week_start"] = bw["Date"].dt.to_period("W").apply(lambda p: p.start_time)
@@ -685,21 +813,16 @@ with tab1:
                 else:
                     bird_weight = filtered_df.groupby("Date")["Bird_Weight"].mean().reset_index()
 
-                fig_bird_weight = px.line(
-                    bird_weight,
-                    x="Date",
-                    y="Bird_Weight",
-                    markers=True,
-                    title="Average Bird Weight Over Time"
-                )
+                fig_bird_weight = px.line(bird_weight, x="Date", y="Bird_Weight", markers=True)
+                fig_bird_weight.update_traces(line_color=BRAND["accent"])
                 fig_bird_weight.update_yaxes(title_text="Bird Weight (g)")
-                st.plotly_chart(fig_bird_weight, width="stretch")
+                st.plotly_chart(style_chart(fig_bird_weight, show_legend=False), use_container_width=True)
             else:
                 st.info("No Bird Weight data available.")
 
         with col2:
             if "Tray_Weight" in filtered_df.columns:
-                st.subheader("Avg Tray Weight")
+                st.markdown('<div class="section-title">⚖️ Avg Tray Weight</div>', unsafe_allow_html=True)
                 if aggregate_weights_weekly:
                     tw = filtered_df.copy()
                     tw["_week_start"] = tw["Date"].dt.to_period("W").apply(lambda p: p.start_time)
@@ -708,154 +831,124 @@ with tab1:
                 else:
                     tray_weight = filtered_df.groupby("Date")["Tray_Weight"].mean().reset_index()
 
-                fig_tray_weight = px.line(
-                    tray_weight,
-                    x="Date",
-                    y="Tray_Weight",
-                    markers=True,
-                    title="Average Tray Weight Over Time"
-                )
+                fig_tray_weight = px.line(tray_weight, x="Date", y="Tray_Weight", markers=True)
+                fig_tray_weight.update_traces(line_color="#14b8a6")
                 fig_tray_weight.update_yaxes(title_text="Tray Weight (g)")
-                st.plotly_chart(fig_tray_weight, width="stretch")
+                st.plotly_chart(style_chart(fig_tray_weight, show_legend=False), use_container_width=True)
             else:
                 st.info("No Tray Weight data available.")
 
 # Tab 2: Trends Analysis
 with tab2:
-    st.subheader("Comparative Metrics Over Time")
-    
+    st.markdown('<div class="section-title">📊 Comparative Metrics Over Time</div>', unsafe_allow_html=True)
+
     col1, col2 = st.columns(2)
-    
+
     with col1:
-        st.subheader("Egg Quality Analysis")
+        st.markdown('<div class="section-title">🥚 Egg Quality Analysis</div>', unsafe_allow_html=True)
         daily_egg_types = filtered_df.groupby("Date")[["Fresh_Eggs", "Crack_Eggs", "Leaker_Eggs"]].sum().reset_index()
-        
+
         fig_egg_comp = go.Figure()
         # Primary Axis: Fresh Eggs
-        fig_egg_comp.add_trace(go.Scatter(x=daily_egg_types["Date"], y=daily_egg_types["Fresh_Eggs"], name="Fresh Eggs (Main)", line=dict(color='#10b981', width=3)))
+        fig_egg_comp.add_trace(go.Scatter(x=daily_egg_types["Date"], y=daily_egg_types["Fresh_Eggs"], name="Fresh Eggs", line=dict(color=BRAND['primary'], width=3), fill="tozeroy", fillcolor="rgba(5,150,105,0.07)"))
         # Secondary Axis: Crack and Leaker
-        fig_egg_comp.add_trace(go.Scatter(x=daily_egg_types["Date"], y=daily_egg_types["Crack_Eggs"], name="Crack Eggs (Right Axis)", yaxis="y2", line=dict(color='#f59e0b', dash='dot')))
-        fig_egg_comp.add_trace(go.Scatter(x=daily_egg_types["Date"], y=daily_egg_types["Leaker_Eggs"], name="Leaker Eggs (Right Axis)", yaxis="y2", line=dict(color='#ef4444', dash='dash')))
-        
+        fig_egg_comp.add_trace(go.Scatter(x=daily_egg_types["Date"], y=daily_egg_types["Crack_Eggs"], name="Crack Eggs", yaxis="y2", line=dict(color=BRAND['accent'], dash='dot')))
+        fig_egg_comp.add_trace(go.Scatter(x=daily_egg_types["Date"], y=daily_egg_types["Leaker_Eggs"], name="Leaker Eggs", yaxis="y2", line=dict(color=BRAND['danger'], dash='dash')))
+
         fig_egg_comp.update_layout(
-            title="Fresh vs. Quality Issues",
-            yaxis=dict(title="Total Fresh Eggs", side="left", tickformat=","),
-            yaxis2=dict(title="Crack / Leaker Count", overlaying="y", side="right", showgrid=False, tickformat=","),
-            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
-            hovermode="x unified"
+            yaxis=dict(title="Fresh Eggs", side="left", tickformat=","),
+            yaxis2=dict(title="Crack / Leaker", overlaying="y", side="right", showgrid=False, tickformat=","),
         )
-        st.plotly_chart(fig_egg_comp, width="stretch")
-    
+        st.plotly_chart(style_chart(fig_egg_comp), use_container_width=True)
+
     with col2:
-        st.subheader("Tray Types Distribution")
+        st.markdown('<div class="section-title">🧺 Tray Types Distribution</div>', unsafe_allow_html=True)
         tray_data = filtered_df.groupby("Date")[["Jumbo_Tray", "Fresh_Tray"]].sum().reset_index()
-        
+
         fig_trays = go.Figure()
         # Primary Axis: Fresh Trays
-        fig_trays.add_trace(go.Bar(x=tray_data["Date"], y=tray_data["Fresh_Tray"], name="Fresh Trays", marker_color='#3b82f6', opacity=0.7))
+        fig_trays.add_trace(go.Bar(x=tray_data["Date"], y=tray_data["Fresh_Tray"], name="Fresh Trays", marker_color=BRAND['info'], marker_line_width=0, opacity=0.85))
         # Secondary Axis: Jumbo Trays
-        fig_trays.add_trace(go.Scatter(x=tray_data["Date"], y=tray_data["Jumbo_Tray"], name="Jumbo Trays (Right Axis)", yaxis="y2", line=dict(color='#8b5cf6', width=3)))
-        
+        fig_trays.add_trace(go.Scatter(x=tray_data["Date"], y=tray_data["Jumbo_Tray"], name="Jumbo Trays", yaxis="y2", line=dict(color=BRAND['violet'], width=3)))
+
         fig_trays.update_layout(
-            title="Fresh Trays vs. Jumbo Trays",
-            yaxis=dict(title="Fresh Trays (Bars)", tickformat=","),
-            yaxis2=dict(title="Jumbo Trays (Line)", overlaying="y", side="right", showgrid=False, tickformat=","),
-            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
-            hovermode="x unified"
+            yaxis=dict(title="Fresh Trays", tickformat=","),
+            yaxis2=dict(title="Jumbo Trays", overlaying="y", side="right", showgrid=False, tickformat=","),
         )
-        st.plotly_chart(fig_trays, width="stretch")
-    
-    st.subheader("Age vs Production Performance")
+        st.plotly_chart(style_chart(fig_trays), use_container_width=True)
+
+    st.markdown('<div class="section-title">🌱 Age vs Production Performance</div>', unsafe_allow_html=True)
     age_prod = filtered_df.groupby("Date").agg({
         "Age": "mean",
         "Production_Pct": "mean"
     }).reset_index()
-    
+
     fig_age = go.Figure()
-    fig_age.add_trace(go.Scatter(x=age_prod["Date"], y=age_prod["Age"], name="Avg Age", yaxis="y1"))
-    fig_age.add_trace(go.Scatter(x=age_prod["Date"], y=age_prod["Production_Pct"], name="Production %", yaxis="y2"))
+    fig_age.add_trace(go.Scatter(x=age_prod["Date"], y=age_prod["Age"], name="Avg Age", yaxis="y1", line=dict(color=BRAND['accent'], width=3)))
+    fig_age.add_trace(go.Scatter(x=age_prod["Date"], y=age_prod["Production_Pct"], name="Production %", yaxis="y2", line=dict(color=BRAND['primary'], width=3)))
     fig_age.update_layout(
-        title="Age vs Production Performance",
         xaxis=dict(title="Date"),
         yaxis=dict(title="Age (weeks)", side="left"),
-        yaxis2=dict(title="Production %", overlaying="y", side="right"),
-        hovermode="x unified"
+        yaxis2=dict(title="Production %", overlaying="y", side="right", showgrid=False),
     )
-    st.plotly_chart(fig_age, width="stretch")
+    st.plotly_chart(style_chart(fig_age, height=360), use_container_width=True)
 
 # Tab 3: Shed Details
 with tab3:
-    st.subheader("Performance by Shed")
-    
+    st.markdown('<div class="section-title">🐔 Performance by Shed</div>', unsafe_allow_html=True)
+
     selected_shed = st.selectbox(
         "Select Shed for Detailed Analysis",
         sorted(filtered_df["Shed"].unique())
     )
-    
+
     shed_data = filtered_df[filtered_df["Shed"] == selected_shed]
-    
+
     col1, col2, col3, col4 = st.columns(4)
-    
+
     with col1:
-        st.metric("Total Fresh Eggs", int(shed_data["Fresh_Eggs"].sum()))
+        st.metric("Total Fresh Eggs", f"{int(shed_data['Fresh_Eggs'].sum()):,}")
     with col2:
         st.metric("Avg Age", f"{shed_data['Age'].mean():.1f} weeks")
     with col3:
         st.metric("Avg Production %", f"{shed_data['Production_Pct'].mean():.2f}%")
     with col4:
-        st.metric("Total Mortality", int(shed_data["Mortality"].sum()))
-    
+        st.metric("Total Mortality", f"{int(shed_data['Mortality'].sum()):,}")
+
     col1, col2 = st.columns(2)
-    
+
     with col1:
-        fig_shed_eggs = px.line(
-            shed_data.sort_values("Date"),
-            x="Date",
-            y="Fresh_Eggs",
-            title=f"{selected_shed} - Fresh Eggs",
-            markers=True
-        )
-        st.plotly_chart(fig_shed_eggs, width="stretch")
-    
+        st.markdown(f'<div class="section-title">🥚 {selected_shed} — Fresh Eggs</div>', unsafe_allow_html=True)
+        fig_shed_eggs = px.line(shed_data.sort_values("Date"), x="Date", y="Fresh_Eggs", markers=True)
+        fig_shed_eggs.update_traces(line_color=BRAND["primary"], fill="tozeroy",
+                                    fillcolor="rgba(5,150,105,0.08)")
+        st.plotly_chart(style_chart(fig_shed_eggs, show_legend=False), use_container_width=True)
+
     with col2:
-        fig_shed_prod = px.line(
-            shed_data.sort_values("Date"),
-            x="Date",
-            y="Production_Pct",
-            title=f"{selected_shed} - Production %",
-            markers=True
-        )
-        st.plotly_chart(fig_shed_prod, width="stretch")
-    
+        st.markdown(f'<div class="section-title">📈 {selected_shed} — Production %</div>', unsafe_allow_html=True)
+        fig_shed_prod = px.line(shed_data.sort_values("Date"), x="Date", y="Production_Pct", markers=True)
+        fig_shed_prod.update_traces(line_color=BRAND["violet"])
+        st.plotly_chart(style_chart(fig_shed_prod, show_legend=False), use_container_width=True)
+
     # Shed comparison
-    st.subheader("Shed Comparison (Latest Date)")
+    st.markdown('<div class="section-title">🏆 Shed Comparison (Latest Date)</div>', unsafe_allow_html=True)
     latest_shed_data = filtered_df[filtered_df["Date"] == latest_date]
-    
+
     col1, col2 = st.columns(2)
-    
+
     with col1:
-        fig_comp_eggs = px.bar(
-            latest_shed_data,
-            x="Shed",
-            y="Fresh_Eggs",
-            title="Fresh Eggs by Shed (Latest Date)",
-            color="Shed"
-        )
-        st.plotly_chart(fig_comp_eggs, width="stretch")
-    
+        fig_comp_eggs = px.bar(latest_shed_data, x="Shed", y="Fresh_Eggs", color="Shed")
+        fig_comp_eggs.update_traces(marker_line_width=0)
+        st.plotly_chart(style_chart(fig_comp_eggs, show_legend=False), use_container_width=True)
+
     with col2:
-        fig_comp_prod = px.bar(
-            latest_shed_data,
-            x="Shed",
-            y="Production_Pct",
-            title="Production % by Shed (Latest Date)",
-            color="Shed"
-        )
-        st.plotly_chart(fig_comp_prod, width="stretch")
+        fig_comp_prod = px.bar(latest_shed_data, x="Shed", y="Production_Pct", color="Shed")
+        fig_comp_prod.update_traces(marker_line_width=0)
+        st.plotly_chart(style_chart(fig_comp_prod, show_legend=False), use_container_width=True)
 
 # Tab 4: Data Table
 with tab4:
-    st.subheader("Detailed Data Table")
+    st.markdown('<div class="section-title">📋 Detailed Data Table</div>', unsafe_allow_html=True)
     
     # Sort options
     col1, col2, col3 = st.columns(3)
@@ -882,7 +975,7 @@ with tab4:
         except Exception:
             display_df["Date"] = display_df["Date"].astype(str)
 
-    st.dataframe(display_df, width="stretch", height=400)
+    st.dataframe(display_df, use_container_width=True, height=400)
     
     # Download button
     csv = filtered_df.to_csv(index=False)
@@ -895,40 +988,39 @@ with tab4:
 
 # Tab 5: Insights
 with tab5:
-    st.subheader("📊 Key Insights")
-    
+    st.markdown('<div class="section-title">💡 Key Insights</div>', unsafe_allow_html=True)
+
+    def insight_card(label, main, sub, tone=""):
+        st.markdown(
+            f"""<div class="insight-card {tone}">
+                <div class="ic-label">{label}</div>
+                <div class="ic-main">{main}</div>
+                <div class="ic-sub">{sub}</div>
+            </div>""",
+            unsafe_allow_html=True,
+        )
+
+    daily_sum = filtered_df.groupby("Date")["Fresh_Eggs"].sum()
+    top_day, top_eggs = daily_sum.idxmax(), daily_sum.max()
+    low_day, low_eggs = daily_sum.idxmin(), daily_sum.min()
+    shed_prod = filtered_df.groupby("Shed")["Production_Pct"].mean()
+    best_shed, best_prod = shed_prod.idxmax(), shed_prod.max()
+    shed_mort = filtered_df.groupby("Shed")["Mortality"].sum()
+    high_mort_shed, high_mort = shed_mort.idxmax(), shed_mort.max()
+
     col1, col2 = st.columns(2)
-    
     with col1:
-        st.info("**Highest Production Day**")
-        top_day = filtered_df.groupby("Date")["Fresh_Eggs"].sum().idxmax()
-        top_eggs = filtered_df.groupby("Date")["Fresh_Eggs"].sum().max()
-        st.write(f"Date: {top_day.date()}")
-        st.write(f"Fresh Eggs: {int(top_eggs):,}")
-    
+        insight_card("🏆 Highest Production Day", f"{int(top_eggs):,} eggs", f"on {top_day.date()}")
     with col2:
-        st.info("**Lowest Production Day**")
-        low_day = filtered_df.groupby("Date")["Fresh_Eggs"].sum().idxmin()
-        low_eggs = filtered_df.groupby("Date")["Fresh_Eggs"].sum().min()
-        st.write(f"Date: {low_day.date()}")
-        st.write(f"Fresh Eggs: {int(low_eggs):,}")
-    
+        insight_card("📉 Lowest Production Day", f"{int(low_eggs):,} eggs", f"on {low_day.date()}", "amber")
+
+    st.write("")
     col1, col2 = st.columns(2)
-    
     with col1:
-        st.info("**Best Performing Shed**")
-        best_shed = filtered_df.groupby("Shed")["Production_Pct"].mean().idxmax()
-        best_prod = filtered_df.groupby("Shed")["Production_Pct"].mean().max()
-        st.write(f"Shed: {best_shed}")
-        st.write(f"Avg Production %: {best_prod:.2f}%")
-    
+        insight_card("⭐ Best Performing Shed", best_shed, f"Avg production {best_prod:.2f}%", "blue")
     with col2:
-        st.info("**Highest Mortality Shed**")
-        high_mort_shed = filtered_df.groupby("Shed")["Mortality"].sum().idxmax()
-        high_mort = filtered_df.groupby("Shed")["Mortality"].sum().max()
-        st.write(f"Shed: {high_mort_shed}")
-        st.write(f"Total Mortality: {int(high_mort)}")
-    
+        insight_card("⚠️ Highest Mortality Shed", high_mort_shed, f"Total mortality {int(high_mort):,}", "red")
+
     st.divider()
     
     col1, col2, col3 = st.columns(3)
@@ -953,8 +1045,8 @@ with tab5:
     
     st.divider()
     
-    st.write("**📈 Farm Performance Benchmarks**")
-    st.write("This table shows the typical performance versus the best and worst days in your selected range.")
+    st.markdown('<div class="section-title">📈 Farm Performance Benchmarks</div>', unsafe_allow_html=True)
+    st.caption("Typical performance versus the best and worst days in your selected range.")
     
     # Create a user-friendly summary table
     stats_df = filtered_df.agg({
@@ -975,20 +1067,33 @@ with tab5:
             "Lowest Recorded": "{:,.0f}",
             "Highest Recorded": "{:,.0f}"
         }),
-        width="stretch"
+        use_container_width=True
     )
 
 # Footer
-st.divider()
 st.markdown(
-    """
-    ### About
-    **Owner:** Late Ch VED Singh Singroha  
-    **Address:** Bharon Khera, Jind, Haryana - 126114  
-
-    **Contact Us:**  
-    📱 WhatsApp: +91 9992373885  
-    ✉️ Email: [naveensingroha92@gmail.com](mailto:naveensingroha92@gmail.com)
-    """
+    f"""
+    <div style="margin-top:28px; border-radius:18px; padding:22px 26px;
+         background:linear-gradient(120deg,#0f1f17,#064e3b); color:#e8f5ee;
+         box-shadow:0 12px 30px rgba(6,78,59,0.25);">
+        <div style="font-size:1.05rem; font-weight:800; color:#fff; margin-bottom:8px;">🐔 VSF Farm</div>
+        <div style="display:flex; flex-wrap:wrap; gap:28px; font-size:.92rem; line-height:1.7;">
+            <div>
+                <div style="opacity:.7; text-transform:uppercase; font-size:.72rem; letter-spacing:.05em;">Owner</div>
+                Late Ch VED Singh Singroha<br>
+                Bharon Khera, Jind, Haryana - 126114
+            </div>
+            <div>
+                <div style="opacity:.7; text-transform:uppercase; font-size:.72rem; letter-spacing:.05em;">Contact</div>
+                📱 WhatsApp: +91 9992373885<br>
+                ✉️ <a href="mailto:naveensingroha92@gmail.com" style="color:#a7f3d0 !important;">naveensingroha92@gmail.com</a>
+            </div>
+            <div>
+                <div style="opacity:.7; text-transform:uppercase; font-size:.72rem; letter-spacing:.05em;">Data updated</div>
+                {df['Date'].max().date()}
+            </div>
+        </div>
+    </div>
+    """,
+    unsafe_allow_html=True,
 )
-st.caption(f"Data updated: {df['Date'].max().date()}")
