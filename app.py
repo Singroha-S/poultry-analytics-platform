@@ -553,13 +553,7 @@ sheet_max_dates = get_sheet_max_dates(gsheet_url if gsheet_url else None, gsheet
 st.sidebar.image("assets/vsf_logo.png", use_container_width=True)
 
 # Sidebar filters (friendly for non-technical users)
-# Manual refresh button for non-technical users
-if st.sidebar.button("🔄 Refresh Data", use_container_width=True, help="Fetch the latest data from Google Sheets immediately"):
-    st.cache_data.clear()
-    st.sidebar.success("Fetching fresh data...")
-    st.rerun()
-
-st.sidebar.markdown('<p class="sidebar-header">📅 1. Choose Time Frame</p>', unsafe_allow_html=True)
+st.sidebar.markdown('<p class="sidebar-header">📅 Choose Time Frame</p>', unsafe_allow_html=True)
 
 # Simple presets for non-technical users
 preset = st.sidebar.radio(
@@ -596,46 +590,52 @@ selected_sheds = st.sidebar.multiselect(
     default=sheds
 )
 
-# Weight aggregation controls: bird/tray sheets are weekly in the source
-aggregate_weights_weekly = st.sidebar.checkbox(
-    "Aggregate weight data by week (use for Bird/Tray sheets)",
-    value=True,
-)
+with st.sidebar.expander("⚙️ Advance Setting"):
+    if st.button("🔄 Refresh Data", use_container_width=True, help="Fetch the latest data from Google Sheets immediately"):
+        st.cache_data.clear()
+        st.success("Fetching fresh data...")
+        st.rerun()
 
-# Date limiting controls
-st.sidebar.markdown("---")
-st.sidebar.subheader("🛡️ Data Accuracy Guard")
-date_limit_mode = st.sidebar.radio(
-    "Ignore data entries after:",
-    options=[
-        "Show everything",
-        "Stop at the latest report date",
-        "Stop at one sheet's final date",
-        "Choose a finish date",
-    ],
-    index=0,
-)
-
-combined_max = df["Date"].max().date()
-selected_cap_date = None
-if date_limit_mode == "Stop at the latest report date":
-    selected_cap_date = combined_max
-elif date_limit_mode == "Stop at one sheet's final date":
-    sheet_choice = st.sidebar.selectbox(
-        "Pick sheet to use for the end date",
-        options=sorted(sheet_max_dates.keys()),
-    )
-    selected_cap_date = sheet_max_dates.get(sheet_choice).date() if sheet_choice else None
-elif date_limit_mode == "Choose a finish date":
-    selected_cap_date = st.sidebar.date_input(
-        "Choose the last date to include",
-        value=combined_max,
-        min_value=df["Date"].min().date(),
-        max_value=combined_max,
+    # Weight aggregation controls: bird/tray sheets are weekly in the source
+    aggregate_weights_weekly = st.checkbox(
+        "Aggregate weight data by week (use for Bird/Tray sheets)",
+        value=True,
     )
 
-if selected_cap_date:
-    st.sidebar.write(f"Including data up to: {selected_cap_date}")
+    # Date limiting controls
+    st.markdown("---")
+    st.subheader("🛡️ Data Accuracy Guard")
+    date_limit_mode = st.radio(
+        "Ignore data entries after:",
+        options=[
+            "Show everything",
+            "Stop at the latest report date",
+            "Stop at one sheet's final date",
+            "Choose a finish date",
+        ],
+        index=0,
+    )
+
+    combined_max = df["Date"].max().date()
+    selected_cap_date = None
+    if date_limit_mode == "Stop at the latest report date":
+        selected_cap_date = combined_max
+    elif date_limit_mode == "Stop at one sheet's final date":
+        sheet_choice = st.selectbox(
+            "Pick sheet to use for the end date",
+            options=sorted(sheet_max_dates.keys()),
+        )
+        selected_cap_date = sheet_max_dates.get(sheet_choice).date() if sheet_choice else None
+    elif date_limit_mode == "Choose a finish date":
+        selected_cap_date = st.date_input(
+            "Choose the last date to include",
+            value=combined_max,
+            min_value=df["Date"].min().date(),
+            max_value=combined_max,
+        )
+
+    if selected_cap_date:
+        st.write(f"Including data up to: {selected_cap_date}")
 
 
 # Filter data
@@ -666,7 +666,7 @@ st.markdown(
     f"""
     <div class="hero">
         <h1>🐔 VSF Farm Analytics</h1>
-        <span class="tagline">✨ {quote}</span>
+        <marquee class="tagline" scrollamount="6">✨ {quote}</marquee>
         <div class="pill-row">
             <span class="pill">🗓️ <b>{date_range[0]}</b> → <b>{date_range[1]}</b></span>
             <span class="pill">🏠 Sheds: <b>{sheds_label}</b></span>
