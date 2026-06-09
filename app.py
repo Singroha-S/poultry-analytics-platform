@@ -40,7 +40,7 @@ except ImportError:
 
 # Page configuration
 st.set_page_config(
-    page_title="VSF Farm Analytics",
+    page_title="Layer Farm Analytics",
     page_icon="🐔",
     layout="wide",
     initial_sidebar_state="expanded"
@@ -665,7 +665,7 @@ sheds_label = ", ".join(selected_sheds) if selected_sheds else "None"
 st.markdown(
     f"""
     <div class="hero">
-        <h1>🐔 VSF Farm Analytics</h1>
+        <h1>🥚 Layer Farm Analytics 🐔</h1>
         <marquee class="tagline" scrollamount="6">✨ {quote}</marquee>
         <div class="pill-row">
             <span class="pill">🗓️ <b>{date_range[0]}</b> → <b>{date_range[1]}</b></span>
@@ -1072,15 +1072,15 @@ with tab5:
 
 # Footer
 st.markdown(
-    f"""
+    """
     <div style="margin-top:28px; border-radius:18px; padding:22px 26px;
          background:linear-gradient(120deg,#0f1f17,#064e3b); color:#e8f5ee;
          box-shadow:0 12px 30px rgba(6,78,59,0.25);">
-        <div style="font-size:1.05rem; font-weight:800; color:#fff; margin-bottom:8px;">🐔 VSF Farm</div>
+        <div style="font-size:1.05rem; font-weight:800; color:#fff; margin-bottom:8px;">VSF - Layer Farm</div>
         <div style="display:flex; flex-wrap:wrap; gap:28px; font-size:.92rem; line-height:1.7;">
             <div>
                 <div style="opacity:.7; text-transform:uppercase; font-size:.72rem; letter-spacing:.05em;">Owner</div>
-                Late Ch VED Singh Singroha<br>
+                Late Sh Charan Singh S/O Ch VED Singh Singroha<br>
                 Bharon Khera, Jind, Haryana - 126114
             </div>
             <div>
@@ -1089,9 +1089,19 @@ st.markdown(
                 ✉️ <a href="mailto:naveensingroha92@gmail.com" style="color:#a7f3d0 !important;">naveensingroha92@gmail.com</a>
             </div>
             <div>
-                <div style="opacity:.7; text-transform:uppercase; font-size:.72rem; letter-spacing:.05em;">Data updated</div>
-                {df['Date'].max().date()}
+                <div style="opacity:.7; text-transform:uppercase; font-size:.72rem; letter-spacing:.05em;">Developer</div>
+                <div style="display:flex; gap:12px; margin-top:6px;">
+                    <a href="https://www.linkedin.com/in/singroha/" target="_blank" style="color:#a7f3d0;" title="LinkedIn">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" fill="currentColor" viewBox="0 0 24 24"><path d="M19 0h-14c-2.761 0-5 2.239-5 5v14c0 2.761 2.239 5 5 5h14c2.762 0 5-2.239 5-5v-14c0-2.761-2.238-5-5-5zm-11 19h-3v-11h3v11zm-1.5-12.268c-.966 0-1.75-.79-1.75-1.764s.784-1.764 1.75-1.764 1.75.79 1.75 1.764-.783 1.764-1.75 1.764zm13.5 12.268h-3v-5.604c0-3.368-4-3.113-4 0v5.604h-3v-11h3v1.765c1.396-2.586 7-2.777 7 2.476v6.759z"/></svg>
+                    </a>
+                    <a href="https://github.com/Singroha-S" target="_blank" style="color:#a7f3d0;" title="GitHub">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" fill="currentColor" viewBox="0 0 24 24"><path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/></svg>
+                    </a>
+                </div>
             </div>
+        </div>
+        <div style="margin-top:20px; padding-top:14px; border-top:1px solid rgba(255,255,255,0.1); font-size:.8rem; opacity:.8; text-align:center;">
+            © Copyright 2026 | VSF Pvt Ltd.
         </div>
     </div>
     """,
