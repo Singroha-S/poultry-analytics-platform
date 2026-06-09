@@ -619,7 +619,7 @@ selected_sheds = st.sidebar.multiselect(
 )
 
 with st.sidebar.expander("⚙️ Advance Setting"):
-    if st.button("🔄 Refresh Data", use_container_width=True, help="Fetch the latest data from Google Sheets immediately"):
+    if st.button("🔄 Refresh Data", width="stretch", help="Fetch the latest data from Google Sheets immediately"):
         st.cache_data.clear()
         st.success("Fetching fresh data...")
         st.rerun()
