@@ -298,6 +298,21 @@ css = f"""
     /* dataframe rounding */
     [data-testid="stDataFrame"] {{ border-radius: 12px; overflow: hidden; }}
     hr {{ border-color: {BRAND['line']}; }}
+
+    /* ---- Mobile Responsiveness ---- */
+    @media (max-width: 768px) {{
+        .block-container {{ padding-top: 1rem !important; padding-left: 0.8rem !important; padding-right: 0.8rem !important; }}
+        .hero {{ padding: 22px 18px; border-radius: 16px; margin-bottom: 16px; }}
+        .hero h1 {{ font-size: 1.5rem !important; margin-bottom: 6px !important; line-height: 1.2 !important; }}
+        .hero .tagline {{ font-size: 0.9rem !important; }}
+        .hero .pill-row {{ gap: 8px; flex-direction: column; }}
+        .hero .pill {{ font-size: 12px; padding: 6px 12px; align-self: flex-start; }}
+        [data-testid="stMetric"] {{ padding: 12px 14px; border-radius: 12px; }}
+        [data-testid="stMetricValue"] {{ font-size: 1.4rem !important; }}
+        [data-testid="stMetricLabel"] {{ font-size: 0.75rem !important; }}
+        [data-testid="stPlotlyChart"] {{ padding: 6px; border-radius: 12px; }}
+        div[role="tablist"] > button[role="tab"] {{ font-size: 13px !important; padding: 10px 8px !important; }}
+    }}
     </style>
     """
 st.markdown(css, unsafe_allow_html=True)
