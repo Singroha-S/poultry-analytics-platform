@@ -38,10 +38,23 @@ try:
 except ImportError:
     pass
 
+def get_favicon():
+    """Load the logo and add a solid white background so it is visible in dark browser tabs."""
+    try:
+        from PIL import Image
+        img = Image.open("assets/vsf_logo.png").convert("RGBA")
+        # Create a solid white background image
+        bg = Image.new("RGBA", img.size, (255, 255, 255, 255))
+        # Paste the original image onto the white background using its alpha channel as a mask
+        bg.paste(img, (0, 0), img)
+        return bg.convert("RGB")
+    except Exception:
+        return "assets/vsf_logo.png"
+
 # Page configuration
 st.set_page_config(
     page_title="Layer Farm Analytics",
-    page_icon="🐔",
+    page_icon=get_favicon(),
     layout="wide",
     initial_sidebar_state="expanded"
 )
