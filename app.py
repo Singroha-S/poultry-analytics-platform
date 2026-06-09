@@ -13,6 +13,7 @@ import os
 import io
 import datetime
 import numpy as np
+import inspect
 
 # Handle large background images and suppress decompression bomb warnings
 try:
@@ -50,6 +51,18 @@ def get_favicon():
         return bg.convert("RGB")
     except Exception:
         return "assets/vsf_logo.png"
+
+def get_stretch():
+    """Return the correct kwarg for stretching elements to container width based on Streamlit version."""
+    try:
+        sig = inspect.signature(st.plotly_chart)
+        if 'width' in sig.parameters:
+            return {"width": "stretch"}
+    except Exception:
+        pass
+    return {"use_container_width": True}
+
+STRETCH = get_stretch()
 
 # Page configuration
 st.set_page_config(
@@ -578,7 +591,7 @@ def get_sheet_max_dates(gsheet_url: Optional[str] = None, gsheet_gid: Optional[s
 sheet_max_dates = get_sheet_max_dates(gsheet_url if gsheet_url else None, gsheet_gid if gsheet_gid else None, sa_file)
 
 # Add logo to the top of the sidebar for high visibility
-st.sidebar.image("assets/vsf_logo.png", use_container_width=True)
+st.sidebar.image("assets/vsf_logo.png", **STRETCH)
 
 # Sidebar filters (friendly for non-technical users)
 st.sidebar.markdown('<p class="sidebar-header">📅 Choose Time Frame</p>', unsafe_allow_html=True)
@@ -619,7 +632,7 @@ selected_sheds = st.sidebar.multiselect(
 )
 
 with st.sidebar.expander("⚙️ Advance Setting"):
-    if st.button("🔄 Refresh Data", width="stretch", help="Fetch the latest data from Google Sheets immediately"):
+    if st.button("🔄 Refresh Data", help="Fetch the latest data from Google Sheets immediately", **STRETCH):
         st.cache_data.clear()
         st.success("Fetching fresh data...")
         st.rerun()
@@ -799,7 +812,7 @@ with tab1:
         fig_eggs.update_traces(line_color=BRAND["primary"], fill="tozeroy",
                                fillcolor="rgba(5,150,105,0.08)")
         fig_eggs.update_yaxes(title_text="Fresh Eggs")
-        st.plotly_chart(style_chart(fig_eggs, show_legend=False), use_container_width=True)
+        st.plotly_chart(style_chart(fig_eggs, show_legend=False), **STRETCH)
 
     with col2:
         st.markdown('<div class="section-title">🐔 Daily Bird Balance</div>', unsafe_allow_html=True)
@@ -808,7 +821,7 @@ with tab1:
         fig_birds.update_traces(line_color=BRAND["info"], fill="tozeroy",
                                 fillcolor="rgba(59,130,246,0.08)")
         fig_birds.update_yaxes(title_text="Bird Balance")
-        st.plotly_chart(style_chart(fig_birds, show_legend=False), use_container_width=True)
+        st.plotly_chart(style_chart(fig_birds, show_legend=False), **STRETCH)
 
     col1, col2 = st.columns(2)
 
@@ -818,7 +831,7 @@ with tab1:
         fig_prod = px.line(prod_pct, x="Date", y="Production_Pct", markers=True)
         fig_prod.update_traces(line_color=BRAND["violet"])
         fig_prod.update_yaxes(title_text="Production %")
-        st.plotly_chart(style_chart(fig_prod, show_legend=False), use_container_width=True)
+        st.plotly_chart(style_chart(fig_prod, show_legend=False), **STRETCH)
 
     with col2:
         st.markdown('<div class="section-title">⚠️ Mortality Rate Trend</div>', unsafe_allow_html=True)
@@ -826,7 +839,7 @@ with tab1:
         fig_mort = px.bar(mortality, x="Date", y="Mortality")
         fig_mort.update_traces(marker_color=BRAND["danger"], marker_line_width=0)
         fig_mort.update_yaxes(title_text="Mortality Count")
-        st.plotly_chart(style_chart(fig_mort, show_legend=False), use_container_width=True)
+        st.plotly_chart(style_chart(fig_mort, show_legend=False), **STRETCH)
 
     if "Bird_Weight" in filtered_df.columns or "Tray_Weight" in filtered_df.columns:
         col1, col2 = st.columns(2)
@@ -844,7 +857,7 @@ with tab1:
                 fig_bird_weight = px.line(bird_weight, x="Date", y="Bird_Weight", markers=True)
                 fig_bird_weight.update_traces(line_color=BRAND["accent"])
                 fig_bird_weight.update_yaxes(title_text="Bird Weight (g)")
-                st.plotly_chart(style_chart(fig_bird_weight, show_legend=False), use_container_width=True)
+                st.plotly_chart(style_chart(fig_bird_weight, show_legend=False), **STRETCH)
             else:
                 st.info("No Bird Weight data available.")
 
@@ -862,7 +875,7 @@ with tab1:
                 fig_tray_weight = px.line(tray_weight, x="Date", y="Tray_Weight", markers=True)
                 fig_tray_weight.update_traces(line_color="#14b8a6")
                 fig_tray_weight.update_yaxes(title_text="Tray Weight (g)")
-                st.plotly_chart(style_chart(fig_tray_weight, show_legend=False), use_container_width=True)
+                st.plotly_chart(style_chart(fig_tray_weight, show_legend=False), **STRETCH)
             else:
                 st.info("No Tray Weight data available.")
 
@@ -887,7 +900,7 @@ with tab2:
             yaxis=dict(title="Fresh Eggs", side="left", tickformat=","),
             yaxis2=dict(title="Crack / Leaker", overlaying="y", side="right", showgrid=False, tickformat=","),
         )
-        st.plotly_chart(style_chart(fig_egg_comp), use_container_width=True)
+        st.plotly_chart(style_chart(fig_egg_comp), **STRETCH)
 
     with col2:
         st.markdown('<div class="section-title">🧺 Tray Types Distribution</div>', unsafe_allow_html=True)
@@ -903,7 +916,7 @@ with tab2:
             yaxis=dict(title="Fresh Trays", tickformat=","),
             yaxis2=dict(title="Jumbo Trays", overlaying="y", side="right", showgrid=False, tickformat=","),
         )
-        st.plotly_chart(style_chart(fig_trays), use_container_width=True)
+        st.plotly_chart(style_chart(fig_trays), **STRETCH)
 
     st.markdown('<div class="section-title">🌱 Age vs Production Performance</div>', unsafe_allow_html=True)
     age_prod = filtered_df.groupby("Date").agg({
@@ -919,7 +932,7 @@ with tab2:
         yaxis=dict(title="Age (weeks)", side="left"),
         yaxis2=dict(title="Production %", overlaying="y", side="right", showgrid=False),
     )
-    st.plotly_chart(style_chart(fig_age, height=360), use_container_width=True)
+    st.plotly_chart(style_chart(fig_age, height=360), **STRETCH)
 
 # Tab 3: Shed Details
 with tab3:
@@ -950,13 +963,13 @@ with tab3:
         fig_shed_eggs = px.line(shed_data.sort_values("Date"), x="Date", y="Fresh_Eggs", markers=True)
         fig_shed_eggs.update_traces(line_color=BRAND["primary"], fill="tozeroy",
                                     fillcolor="rgba(5,150,105,0.08)")
-        st.plotly_chart(style_chart(fig_shed_eggs, show_legend=False), use_container_width=True)
+        st.plotly_chart(style_chart(fig_shed_eggs, show_legend=False), **STRETCH)
 
     with col2:
         st.markdown(f'<div class="section-title">📈 {selected_shed} — Production %</div>', unsafe_allow_html=True)
         fig_shed_prod = px.line(shed_data.sort_values("Date"), x="Date", y="Production_Pct", markers=True)
         fig_shed_prod.update_traces(line_color=BRAND["violet"])
-        st.plotly_chart(style_chart(fig_shed_prod, show_legend=False), use_container_width=True)
+        st.plotly_chart(style_chart(fig_shed_prod, show_legend=False), **STRETCH)
 
     # Shed comparison
     st.markdown('<div class="section-title">🏆 Shed Comparison (Latest Date)</div>', unsafe_allow_html=True)
@@ -967,12 +980,12 @@ with tab3:
     with col1:
         fig_comp_eggs = px.bar(latest_shed_data, x="Shed", y="Fresh_Eggs", color="Shed")
         fig_comp_eggs.update_traces(marker_line_width=0)
-        st.plotly_chart(style_chart(fig_comp_eggs, show_legend=False), use_container_width=True)
+        st.plotly_chart(style_chart(fig_comp_eggs, show_legend=False), **STRETCH)
 
     with col2:
         fig_comp_prod = px.bar(latest_shed_data, x="Shed", y="Production_Pct", color="Shed")
         fig_comp_prod.update_traces(marker_line_width=0)
-        st.plotly_chart(style_chart(fig_comp_prod, show_legend=False), use_container_width=True)
+        st.plotly_chart(style_chart(fig_comp_prod, show_legend=False), **STRETCH)
 
 # Tab 4: Data Table
 with tab4:
@@ -1003,7 +1016,7 @@ with tab4:
         except Exception:
             display_df["Date"] = display_df["Date"].astype(str)
 
-    st.dataframe(display_df, use_container_width=True, height=400)
+    st.dataframe(display_df, height=400, **STRETCH)
     
     # Download button
     csv = filtered_df.to_csv(index=False)
@@ -1095,7 +1108,7 @@ with tab5:
             "Lowest Recorded": "{:,.0f}",
             "Highest Recorded": "{:,.0f}"
         }),
-        use_container_width=True
+        **STRETCH
     )
 
 # Footer
