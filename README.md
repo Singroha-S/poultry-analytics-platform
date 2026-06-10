@@ -122,6 +122,14 @@ Business Insights
 
 ![Shed Analysis](assets/shed-wise-production.png)
 
+### Data Table
+
+![Shed Analysis](assets/data-table.png)
+
+### Insights
+
+![Shed Analysis](assets/insights.png)
+
 ---
 
 ## Live Demo
