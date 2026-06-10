@@ -997,17 +997,29 @@ with tab4:
     with col1:
         sort_by = st.selectbox(
             "Sort by",
-            ["Date", "Shed", "Fresh_Eggs", "Production_Pct", "Bird_Balance"]
+             ["Date", "Shed", "Fresh_Eggs", "Production_Pct", "Bird_Balance"],
+             key="dt_sort_by"
         )
     
     with col2:
-        sort_order = st.selectbox("Order", ["Ascending", "Descending"])
+        sort_order = st.selectbox("Order", ["Descending", "Ascending"], key="dt_sort_order")
     
     with col3:
-        rows_to_show = st.slider("Rows to display", 10, len(filtered_df), 50)
+        max_rows = max(1, len(filtered_df))
+        rows_to_show = st.slider("Rows to display", 1, max_rows, min(50, max_rows), key="dt_rows_to_show")
     
     ascending = sort_order == "Ascending"
-    display_df = filtered_df.sort_values(sort_by, ascending=ascending).head(rows_to_show).copy()
+    #display_df = filtered_df.sort_values(sort_by, ascending=ascending).head(rows_to_show).copy()
+
+    if sort_by == "Date":
+        #Ensure sheds are always in 1, 2, 3, 4 order for the same date
+        display_df = filtered_df.sort_values(["Date", "Shed"], ascending=[ascending, True]).head(rows_to_show).copy()
+    else:
+        display_df = filtered_df.sort_values(sort_by, ascending=ascending).head(rows_to_show).copy()
+
+
+     # Adjust row number index to start from 1 instead of 0
+    display_df.index = range(1, len(display_df) + 1)
 
     # Format Date column to show only YYYY-MM-DD for the data table
     if "Date" in display_df.columns:
@@ -1016,8 +1028,30 @@ with tab4:
         except Exception:
             display_df["Date"] = display_df["Date"].astype(str)
 
-    st.dataframe(display_df, height=400, **STRETCH)
+    #st.dataframe(display_df, height=400, **STRETCH)
     
+    def highlight_latest(row):
+        #Highlight the first 4 rows to emphasize the most recent data when default sorted
+        if sort_by == "Date" and sort_order == "Descending" and row.name <= 4:
+            return ['background-color: rgba(5, 150, 105, 0.12)'] * len(row)
+        return [''] * len(row)
+
+            
+    # Restore clean number formatting that was lost when applying the style
+    format_dict = {
+        "Fresh_Eggs": "{:,.0f}", "Crack_Eggs": "{:,.0f}", "Leaker_Eggs": "{:,.0f}",
+        "Jumbo_Tray": "{:,.0f}", "Fresh_Tray": "{:,.0f}", "Bird_Balance": "{:,.0f}",
+        "Mortality": "{:,.0f}", "Age": "{:,.1f}", "Production_Pct": "{:,.2f}",
+        "Bird_Weight": "{:,.1f}", "Tray_Weight": "{:,.1f}"
+    }
+    active_formats = {c: format_dict[c] for c in display_df.columns if c in format_dict}
+    
+    styled_df = display_df.style.apply(highlight_latest, axis=1).format(active_formats, na_rep="")
+
+    st.dataframe(styled_df, height=400, **STRETCH)
+    #st.dataframe(display_df.style.apply(highlight_latest, axis=1), height=400, **STRETCH)
+   
+
     # Download button
     csv = filtered_df.to_csv(index=False)
     st.download_button(
