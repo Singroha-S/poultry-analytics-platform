@@ -175,7 +175,7 @@ Completed:
 * Streamlit dashboard deployment
 * Cloud hosting
 
-Planned :
+Planned:
 
 * Multi-month historical analytics
 * Automated data refresh
