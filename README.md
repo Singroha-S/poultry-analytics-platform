@@ -168,14 +168,14 @@ https://layer-analytics.streamlit.app/
 
 Current Version: V1
 
-Completed:
+Completed :
 
 * Data extraction and transformation pipeline
 * Analytics-ready data model
 * Streamlit dashboard deployment
 * Cloud hosting
 
-Planned:
+Planned :
 
 * Multi-month historical analytics
 * Automated data refresh
