@@ -136,7 +136,7 @@ Business Insights
 
 https://layer-analytics.streamlit.app/
 
-----
+---
 
 ## Future Enhancements
 
