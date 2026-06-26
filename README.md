@@ -130,7 +130,7 @@ Business Insights
 
 ![Shed Analysis](assets/insights.png)
 
-----
+---
 
 ## Live Demo
 
